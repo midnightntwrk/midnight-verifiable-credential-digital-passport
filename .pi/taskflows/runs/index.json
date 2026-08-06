@@ -1,0 +1,13 @@
+[
+  {
+    "runId": "apply-extract-digital-pa-mshogd0c-9552ec",
+    "flowName": "apply-extract-digital-passport-credential",
+    "cwd": "/home/pat/Desktop/workspace/iog/midnight-verifiable-credential-digital-passport",
+    "status": "running",
+    "createdAt": 1786030514652,
+    "updatedAt": 1786030514666,
+    "relPath": "apply-extract-digital-passport-credential/apply-extract-digital-pa-mshogd0c-9552ec.json",
+    "host": "pi",
+    "packageVersion": "0.2.6"
+  }
+]

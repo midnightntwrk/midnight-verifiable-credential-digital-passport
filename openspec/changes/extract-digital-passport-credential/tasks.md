@@ -1,8 +1,8 @@
 ## 1. Spike: compact include from installed core
 
-- [ ] 1.1 Verify `@midnight-ntwrk/midnight-did-credentials` RC is published to npm; record the version. If not yet published, track as blocking gate and proceed with scaffold/port tasks that don't need installation
-- [ ] 1.2 Install the RC in a scratch directory and determine the compact 0.30.0 `include` syntax that resolves the core contract sources from the installed package (package specifier vs node_modules-relative path); if none works, adopt the fallback: build-time staging of core compact sources from node_modules into a local include path
-- [ ] 1.3 Record the working include resolution in design.md (Open Questions) before touching the contract
+- [x] 1.1 Verify `@midnight-ntwrk/midnight-did-credentials` RC is published to npm; record the version. If not yet published, track as blocking gate and proceed with scaffold/port tasks that don't need installation
+- [x] 1.2 Install the RC in a scratch directory and determine the compact 0.30.0 `include` syntax that resolves the core contract sources from the installed package (package specifier vs node_modules-relative path); if none works, adopt the fallback: build-time staging of core compact sources from node_modules into a local include path
+- [x] 1.3 Record the working include resolution in design.md (Open Questions) before touching the contract
 
 ## 2. Workspace scaffold
 
