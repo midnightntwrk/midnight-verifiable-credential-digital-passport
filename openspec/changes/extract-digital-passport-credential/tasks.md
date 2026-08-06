@@ -13,9 +13,9 @@
 
 ## 3. Nix flake and compact toolchain
 
-- [ ] 3.1 Create `flake.nix` mirroring the monorepo inputs (nixpkgs, flake-parts, midnight-did flake) exposing a devshell with node, pnpm, compact toolchain, and circuit parameters
-- [ ] 3.2 Verify offline contract compilation inside the devshell (pre-populated circuit params), matching the monorepo's mechanism
-- [ ] 3.3 Pin the same compact compiler version (0.30.0) in the flake and in the CI env
+- [x] 3.1 Create `flake.nix` mirroring the monorepo inputs (nixpkgs, flake-parts, midnight-did flake) exposing a devshell with node, pnpm, compact toolchain, and circuit parameters
+- [x] 3.2 Verify offline contract compilation inside the devshell (pre-populated circuit params), matching the monorepo's mechanism
+- [x] 3.3 Pin the same compact compiler version (0.30.0) in the flake and in the CI env
 
 ## 4. Port the family package
 

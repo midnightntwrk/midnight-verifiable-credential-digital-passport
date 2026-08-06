@@ -62,3 +62,7 @@ managed/
 # PI workspace
 .pi/*
 !.pi/settings.json
+
+# Nix build outputs
+result
+result-*
