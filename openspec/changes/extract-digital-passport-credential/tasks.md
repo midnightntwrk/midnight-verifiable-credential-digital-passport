@@ -6,10 +6,10 @@
 
 ## 2. Workspace scaffold
 
-- [ ] 2.1 Create private root manifest (name, engines node >= 24 / pnpm >= 10, workspace scripts), `pnpm-workspace.yaml` listing `packages/*`, and `turbo.json` with typecheck/lint/build/test pipeline
-- [ ] 2.2 Create `packages/midnight-verifiable-credential-digital-passport` manifest: renamed package, `private: true` (until release change), exports map with `.`, `./codecs`, `./contract`, `./testing` and the managed contract subpath, `files` list (dist, compact sources, scripts, README), pinned registry dependencies (`compact-runtime`, `midnight-did-credentials` RC) and zero `workspace:`/`file:`/git entries
-- [ ] 2.3 Create `packages/smoke-consumer` manifest (private) that consumes the family package by tarball install
-- [ ] 2.4 Port/adapt eslint config, prettier config, and TypeScript configs (base + build) for the workspace; verify `pnpm install`, typecheck, and lint run clean on the empty scaffold
+- [x] 2.1 Create private root manifest (name, engines node >= 24 / pnpm >= 10, workspace scripts), `pnpm-workspace.yaml` listing `packages/*`, and `turbo.json` with typecheck/lint/build/test pipeline
+- [x] 2.2 Create `packages/midnight-verifiable-credential-digital-passport` manifest: renamed package, `private: true` (until release change), exports map with `.`, `./codecs`, `./contract`, `./testing` and the managed contract subpath, `files` list (dist, compact sources, scripts, README), pinned registry dependencies (`compact-runtime`, `midnight-did-credentials` RC) and zero `workspace:`/`file:`/git entries
+- [x] 2.3 Create `packages/smoke-consumer` manifest (private) that consumes the family package by tarball install
+- [x] 2.4 Port/adapt eslint config, prettier config, and TypeScript configs (base + build) for the workspace; verify `pnpm install`, typecheck, and lint run clean on the empty scaffold
 
 ## 3. Nix flake and compact toolchain
 
