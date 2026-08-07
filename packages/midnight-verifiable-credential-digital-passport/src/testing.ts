@@ -13,9 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Root public surface: family codecs and the generated/runtime contract module.
-// Fixtures live behind the first-class `./testing` subpath (design D3) and are
-// intentionally NOT re-exported here, so importing the root entry never pulls
-// testing-only dependencies into wallet/verifier code.
-export * from './codecs.js';
-export * from './managed/digital-passport-credential/contract/index.js';
+// `./testing` subpath: an off-chain-only fixture surface for integration tests.
+// This is the only entry point that re-exports the credential fixtures; the
+// root entry stays fixture-free (design D3).
+export * from './testing/credential-fixtures.js';

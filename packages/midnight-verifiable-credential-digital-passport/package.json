@@ -59,13 +59,25 @@
     }
   },
   "scripts": {
-    "clean": "rm -rf dist && rm -rf coverage && rm -rf reports && rm -rf src/managed",
-    "lint": "eslint \"src/**/*.ts\" --ignore-pattern 'src/managed/**'",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix --ignore-pattern 'src/managed/**'",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "contract": "pnpm run compact",
+    "compact": "node ./scripts/stage-core-compact.mjs && compact compile src/digital-passport-credential.compact src/managed/digital-passport-credential && node ./scripts/align-runtime-version.mjs && node ./scripts/strip-managed-sourcemaps.mjs",
+    "clean": "rm -rf dist && rm -rf coverage && rm -rf reports && rm -rf src/managed && rm -rf core-compact-staging",
+    "build": "pnpm run compact && rm -rf dist && mkdir -p dist && tsc -b tsconfig.build.json --force && cp -Rf ./src/managed ./dist/ && cp ./src/digital-passport-credential.compact ./dist && cp -Rf ./src/digital-passport-credential ./dist/",
+    "test": "vitest run",
+    "test:ci": "vitest run",
+    "prepack": "pnpm run build",
+    "lint": "eslint src --ignore-pattern 'src/managed/**'",
+    "lint:fix": "eslint src --fix --ignore-pattern 'src/managed/**'",
+    "typecheck": "pnpm run compact && tsc -p tsconfig.json --noEmit",
+    "all": "pnpm run compact && pnpm run build && pnpm run test:ci"
   },
   "dependencies": {
-    "@midnight-ntwrk/compact-runtime": "0.16.0"
+    "@midnight-ntwrk/compact-runtime": "0.15.0",
+    "@midnight-ntwrk/credential-compact": "0.1.0-rc3"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "vitest": "4.1.10"
   },
   "files": [
     "dist/**",

@@ -13,9 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Root public surface: family codecs and the generated/runtime contract module.
-// Fixtures live behind the first-class `./testing` subpath (design D3) and are
-// intentionally NOT re-exported here, so importing the root entry never pulls
-// testing-only dependencies into wallet/verifier code.
-export * from './codecs.js';
-export * from './managed/digital-passport-credential/contract/index.js';
+/**
+ * Jubjub curve utilities shared between fixture builders and tests.
+ *
+ * @internal
+ */
+
+/** Order of the Jubjub subgroup used for scalar reduction. */
+export const JUBJUB_SUBGROUP_ORDER =
+  6554484396890773809930967563523245729705921265872317281365359162392183254199n;
+
+/** Reduce a bigint modulo {@link JUBJUB_SUBGROUP_ORDER}. */
+export const mod = (value: bigint): bigint => {
+  const reduced = value % JUBJUB_SUBGROUP_ORDER;
+  return reduced >= 0n ? reduced : reduced + JUBJUB_SUBGROUP_ORDER;
+};
