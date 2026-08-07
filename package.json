@@ -17,6 +17,7 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "test:ci": "turbo run test:ci",
+    "smoke": "pnpm --filter smoke-consumer smoke",
     "all": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:ci"
   },
   "devDependencies": {

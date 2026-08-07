@@ -29,12 +29,17 @@ The package SHALL expose exactly these entry points: the root entry (family cont
 
 ### Requirement: Registry-resolvable dependencies
 
-The publishable manifest SHALL depend only on packages resolvable from the npm registry at pinned semantic versions — `@midnight-ntwrk/compact-runtime` and the RC of `@midnight-ntwrk/midnight-did-credentials`. The manifest SHALL contain no `workspace:`, `file:`, git, URL, or sibling-path dependencies, and no dependency on the monorepo's openid package.
+The **publishable manifest** SHALL depend only on packages resolvable from the npm registry at pinned semantic versions — the published contract layer `@midnight-ntwrk/credential-compact` and `@midnight-ntwrk/compact-runtime` (pinned to `0.15.0`, matching `credential-compact`'s hard-required runtime version). The publishable manifest SHALL contain no `workspace:`, `file:`, git, URL, or sibling-path dependencies, and no dependency on the monorepo's openid package. The manifest is **strictly registry-clean** — there are NO local-path (`file:`) overrides anywhere, including the root manifest and the consumer smoke; the smoke resolves every dependency (family + core + runtime) from the npm registry.
 
-#### Scenario: Clean resolution from the registry
+#### Scenario: Publishable manifest is registry-clean
 
-- **WHEN** the packed tarball is installed in an isolated project
-- **THEN** all dependencies resolve from the npm registry without local path overrides
+- **WHEN** the publishable (family) package manifest is inspected
+- **THEN** it declares only registry-resolvable semver dependencies, with no `workspace:`/`file:`/git/URL/sibling-path entries
+
+#### Scenario: Registry resolution confirmed
+
+- **WHEN** the consumer smoke runs in an isolated project with no local-path override
+- **THEN** the packed family tarball installs and every dependency (family + core + runtime) resolves from the npm registry
 
 ### Requirement: Inlined compact-value codec
 
@@ -61,11 +66,11 @@ The package SHALL carry everything needed to consume or rebuild it: compiled dis
 
 ### Requirement: Consumer consumability evidence
 
-The repository SHALL include a private consumer workspace and CI lane that: pack the built package, install the tarball into a clean environment, import every public entry point, and execute a credential fixture round-trip using only registry-resolved dependencies. This lane SHALL pass before the monorepo duplicate may be deleted.
+The repository SHALL include a private consumer workspace and a smoke run that: pack the built package, install the tarball into a clean environment, import every public entry point, and execute a credential fixture round-trip. The publishable manifest resolves its dependencies strictly from the npm registry — `@midnight-ntwrk/credential-compact` and `@midnight-ntwrk/compact-runtime` are both published, so the smoke is a genuine registry-resolution proof (no tarball staging, no overrides). This evidence establishes that the family is consumable as a normal npm package; authorizing deletion of the monorepo duplicate is a separate change in `midnight-verifiable-credentials`.
 
 #### Scenario: Smoke round-trip
 
-- **WHEN** the smoke lane runs against the built tarball
+- **WHEN** the smoke runs against the built tarball in an isolated project with every dependency resolved from the npm registry
 - **THEN** installation succeeds, every public entry point imports, and an issuance/presentation fixture round-trip validates
 
 ### Requirement: Provenance headers

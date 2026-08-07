@@ -7,6 +7,10 @@
     "eslint.config.*",
     ".nvmrc"
   ],
+  "globalEnv": [
+    "COMPACT_DIRECTORY",
+    "COREPACK_HOME"
+  ],
   "tasks": {
     "clean": {
       "cache": false
@@ -32,6 +36,10 @@
     },
     "test:ci": {
       "dependsOn": ["build"],
+      "outputs": []
+    },
+    "smoke": {
+      "cache": false,
       "outputs": []
     }
   }

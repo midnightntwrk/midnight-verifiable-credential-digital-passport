@@ -59,6 +59,10 @@ coverage/
 managed/
 **/managed/
 
+# Staged core compact sources (build artifact; see scripts/stage-core-compact.mjs)
+core-compact-staging/
+**/core-compact-staging/
+
 # PI workspace
 .pi/*
 !.pi/settings.json
@@ -66,3 +70,8 @@ managed/
 # Nix build outputs
 result
 result-*
+
+# Local pre-RC core build used only while @midnight-ntwrk/midnight-did-credentials
+# is unpublished (change extract-digital-passport-credential, gate 1.1). Removed
+# when the RC publishes and the smoke lane (group 6) goes green.
+/.core-rc/

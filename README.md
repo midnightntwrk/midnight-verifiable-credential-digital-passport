@@ -1,72 +1,93 @@
-# Midnight Template Repository
+# midnight-verifiable-credential-digital-passport
 
-This GitHub repository should be used as a template when creating a new Midnight GitHub repository.
-The template is configured with default repository settings and a set of default files that are expected to exist in all Midnight GitHub repositories.
+The standalone home of the **digital-passport verifiable credential family** for
+Midnight. This is the first credential family to graduate out of the
+[`midnight-verifiable-credentials`](https://github.com/midnightntwrk/midnight-verifiable-credentials)
+monorepo into an independent repository with its own ownership, versioning, and
+release train. Consumers install it as a normal npm package; there is no
+source-level coupling to the monorepo.
 
-### LICENSE
+- **Head package:** [`@midnight-ntwrk/midnight-verifiable-credential-digital-passport`](packages/midnight-verifiable-credential-digital-passport)
+  — the credential family: five committed claims, selective disclosures, an
+  age-over-threshold predicate, presentation requests, validation circuits,
+  explicit holder binding, no-status binding, and the protocol model.
+- **On-chain identifiers** (unchanged by the package rename): `midnight:vc:digital-passport`
+  and `digital-passport:v1`.
+- **Status:** `reference` maturity. The package is `private: true` until a
+  separate release change publishes it.
 
-Apache 2.0.
+## Repository layout
 
-### README.md
+```
+packages/
+  midnight-verifiable-credential-digital-passport/   # the credential family (publishable-ready)
+  smoke-consumer/                                    # private consumer boundary evidence
+flake.nix                                            # dev shell: Node, pnpm, Compact toolchain, circuit params
+turbo.json                                           # lint / typecheck / build / test / smoke pipeline
+```
 
-Provides a brief description for users and developers who want to understand the purpose, setup, and usage of the repository.
+It is a pnpm + turbo workspace (`packages/*`), mirroring the
+[`midnight-did`](https://github.com/midnightntwrk/midnight-did) precedent. The
+family package depends only on registry-resolvable semver packages — published
+[`@midnight-ntwrk/compact-runtime`](https://www.npmjs.com/package/@midnight-ntwrk/compact-runtime)
+and the published contract layer
+[`@midnight-ntwrk/credential-compact`](https://www.npmjs.com/package/@midnight-ntwrk/credential-compact)
+(the generic VC/VP core from the `credential-*` core split). The generic
+Compact-value wire codec is inlined into the family package (no dependency on
+the monorepo's openid transport package).
 
-### SECURITY.md
+## Development
 
-Provides a brief description of the Midnight Foundation's security policy and how to properly disclose security issues.
+The reproducible toolchain lives in the Nix flake, which provides Node.js 24,
+pnpm (via Corepack, honoring the `packageManager` pin), the Compact compiler
+(**0.30.0**, identical to the CI pin), and pre-populated Midnight circuit
+parameters for offline compilation.
 
-### CONTRIBUTING.md
+```sh
+nix develop            # enter the dev shell (toolchain + circuit params ready)
+pnpm install           # install workspace dependencies
+pnpm run all           # lint && typecheck && build && test:ci (turbo pipeline)
+```
 
-Provides guidelines for how people can contribute to the Midnight project.
+Other useful tasks: `pnpm run smoke` (consumer boundary round-trip),
+`pnpm run clean`, `pnpm --filter @midnight-ntwrk/midnight-verifiable-credential-digital-passport test`.
 
-### CODEOWNERS
+> **Published-core note:** the family's core contract dependency
+> `@midnight-ntwrk/credential-compact@0.1.0-rc3` is published to npm alongside
+> `@midnight-ntwrk/compact-runtime@0.15.0`. The manifest is strictly
+> registry-clean — there is no `pnpm.overrides`, no `.core-rc/`, and no `file:`
+> override anywhere — so local build/typecheck/test and the consumer smoke all
+> resolve from the registry. See the package
+> [README](packages/midnight-verifiable-credential-digital-passport/README.md)
+> and [design](openspec/changes/extract-digital-passport-credential/design.md) for details.
 
-Defines repository ownership rules.
+## Continuous integration
 
-### ISSUE_TEMPLATE
+- [`ci.yml`](.github/workflows/ci.yml) — the full contract lane (typecheck,
+  lint, build, test) plus the consumer smoke round-trip. The `verify` and `smoke`
+  jobs are un-gated and run on every push/PR (`credential-compact` is published,
+  so there is no `rc-gate` job); security-hygiene lanes always run.
+- [`dependency-review.yml`](.github/workflows/dependency-review.yml),
+  [`scorecard.yml`](.github/workflows/scorecard.yml),
+  [`scan.yaml`](.github/workflows/scan.yaml) — supply-chain security hygiene.
 
-Provides templates for reporting various types of issues, such as: bug report, documentation improvement and feature request.
+## Boundary handoff
 
-### PULL_REQUEST_TEMPLATE
+This repository is the source of truth for the family. The duplicate in the
+`midnight-verifiable-credentials` monorepo is frozen migration evidence until a
+separate change in that repository deletes it. The criteria authorizing that
+deletion are recorded in
+[`docs/monorepo-deletion-criteria.md`](docs/monorepo-deletion-criteria.md).
 
-Provides a template for a pull request.
+## Related repositories
 
-### CLA Assistant
+- [midnight-verifiable-credentials](https://github.com/midnightntwrk/midnight-verifiable-credentials)
+  — the generic VC/VP core (now published as `@midnight-ntwrk/credential-compact`
+  from the `credential-*` core split) and the extraction source; see the
+  [core credentials package](https://github.com/midnightntwrk/midnight-verifiable-credentials/blob/develop-history-2026-08-06/packages/core/primitives/credentials/README.md).
+- [midnight-did](https://github.com/midnightntwrk/midnight-did) — the
+  pnpm + turbo + flake + CI precedent this repository mirrors.
 
-The Midnight Foundation appreciates contributions, and like many other open source projects asks contributors to sign a contributor
-License Agreement before accepting contributions. We use CLA assistant (https://github.com/cla-assistant/cla-assistant) to streamline the CLA
-signing process, enabling contributors to sign our CLAs directly within a GitHub pull request.
+## License
 
-### Dependabot
-
-The Midnight Foundation uses GitHub Dependabot feature to keep our projects dependencies up-to-date and address potential security vulnerabilities.
-
-### Checkmarx
-
-The Midnight Foundation uses Checkmarx for application security (AppSec) to identify and fix security vulnerabilities.
-All repositories are scanned with Checkmarx's suite of tools including: Static Application Security Testing (SAST), Infrastructure as Code (IaC), Software Composition Analysis (SCA), API Security, Container Security and Supply Chain Scans (SCS).
-
-### Unito
-
-Facilitates two-way data synchronization, automated workflows and streamline processes between: Jira, GitHub issues and Github project Kanban board.
-
-# TODO - New Repo Owner
-
-### Software Package Data Exchange (SPDX)
-Include the following Software Package Data Exchange (SPDX) short-form identifier in a comment at the top headers of each source code file.
-
-
- <I>// This file is part of <B>REPLACE WITH REPO-NAME</B>.<BR>
- // Copyright (C) Midnight Foundation<BR>
- // SPDX-License-Identifier: Apache-2.0<BR>
- // Licensed under the Apache License, Version 2.0 (the "License");<BR>
- // You may not use this file except in compliance with the License.<BR>
- // You may obtain a copy of the License at<BR>
- //<BR>
- //	https://www.apache.org/licenses/LICENSE-2.0<BR>
- //<BR>
- // Unless required by applicable law or agreed to in writing, software<BR>
- // distributed under the License is distributed on an "AS IS" BASIS,<BR>
- // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<BR>
- // See the License for the specific language governing permissions and<BR>
- // limitations under the License.</I>
+Apache 2.0 — see [LICENSE](LICENSE).
