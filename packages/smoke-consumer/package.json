@@ -9,7 +9,7 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "clean": "rm -rf node_modules package-lock.json",
-    "smoke": "echo 'smoke-consumer: implemented in change task group 6 (consumer evidence)'"
+    "clean": "rm -rf node_modules",
+    "smoke": "node ./scripts/smoke.mjs"
   }
 }
