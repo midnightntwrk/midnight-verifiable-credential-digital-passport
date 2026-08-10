@@ -13,8 +13,8 @@ source-level coupling to the monorepo.
   explicit holder binding, no-status binding, and the protocol model.
 - **On-chain identifiers** (unchanged by the package rename): `midnight:vc:digital-passport`
   and `digital-passport:v1`.
-- **Status:** `reference` maturity. The package is `private: true` until a
-  separate release change publishes it.
+- **Status:** `reference` maturity. The package manifest is publishable; the
+  first registry release is cut by a separate release change.
 
 ## Repository layout
 
