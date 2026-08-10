@@ -54,7 +54,7 @@ Other useful tasks: `pnpm run smoke` (consumer boundary round-trip),
 
 > **Published-core note:** the family's core contract dependency
 > `@midnight-ntwrk/credential-compact@0.1.0-rc3` is published to npm alongside
-> `@midnight-ntwrk/compact-runtime@0.15.0`. The manifest is strictly
+> `@midnight-ntwrk/compact-runtime@0.16.0`. The manifest is strictly
 > registry-clean — there is no `pnpm.overrides`, no `.core-rc/`, and no `file:`
 > override anywhere — so local build/typecheck/test and the consumer smoke all
 > resolve from the registry. See the package
