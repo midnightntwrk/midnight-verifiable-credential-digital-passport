@@ -32,6 +32,6 @@
 ## 5. Verification and archive prep
 
 - [x] 5.1 Full local gate: `nix flake check`, `pnpm all` (compact + build + test), lint/typecheck via turbo
-- [ ] 5.2 CI green on the PR, including the consumer smoke lane
+- [x] 5.2 CI green on the PR, including the consumer smoke lane
 - [x] 5.3 `openspec validate adopt-compact-toolchain-0311 --strict` passes
 - [x] 5.4 Archive ordering confirmed: `extract-digital-passport-credential` is archived before this change, so both capability deltas apply in order
