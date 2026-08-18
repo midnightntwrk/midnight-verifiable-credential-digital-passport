@@ -44,8 +44,8 @@ Corepack, honoring the `packageManager` pin), and the Compact compiler
 (**0.31.1**, identical to the CI pin) sourced from the
 [`MediaNoxLabs/flake-collection`](https://github.com/MediaNoxLabs/flake-collection)
 flake input — the same toolchain packaging the sibling repositories consume —
-plus Midnight circuit parameters from the same input, pre-populated for
-offline compilation.
+plus Midnight circuit parameters from the same input, provided to the
+compiler through `MIDNIGHT_PP` for offline compilation.
 
 ```sh
 nix develop            # enter the dev shell (toolchain + circuit params ready)
