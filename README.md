@@ -22,7 +22,8 @@ source-level coupling to the monorepo.
 packages/
   midnight-verifiable-credential-digital-passport/   # the credential family (publishable-ready)
   smoke-consumer/                                    # private consumer boundary evidence
-flake.nix                                            # dev shell: Node, pnpm, Compact toolchain, circuit params
+flake.nix                                            # dev shell + hermetic npm-artifacts tarball output
+nix/                                                 # offline dependency fetch and per-package tarball derivations
 turbo.json                                           # lint / typecheck / build / test / smoke pipeline
 ```
 
@@ -43,8 +44,8 @@ Corepack, honoring the `packageManager` pin), and the Compact compiler
 (**0.31.1**, identical to the CI pin) sourced from the
 [`MediaNoxLabs/flake-collection`](https://github.com/MediaNoxLabs/flake-collection)
 flake input — the same toolchain packaging the sibling repositories consume —
-plus Midnight circuit parameters vendored in-repo
-(`nix/midnight-circuit-params.nix`) and pre-populated for offline compilation.
+plus Midnight circuit parameters from the same input, pre-populated for
+offline compilation.
 
 ```sh
 nix develop            # enter the dev shell (toolchain + circuit params ready)
@@ -54,6 +55,28 @@ pnpm run all           # lint && typecheck && build && test:ci (turbo pipeline)
 
 Other useful tasks: `pnpm run smoke` (consumer boundary round-trip),
 `pnpm run clean`, `pnpm --filter @midnight-ntwrk/midnight-verifiable-credential-digital-passport test`.
+
+## Consuming the npm tarballs from another repository
+
+Besides installing the published npm package, downstream repositories can
+build the publishable tarballs hermetically from this flake — no local
+toolchain, no network during the build:
+
+```sh
+nix build github:midnightntwrk/midnight-verifiable-credential-digital-passport#npm-artifacts
+```
+
+The output is a flat directory containing one `.tgz` per publishable
+(non-private) workspace package — currently
+`midnight-ntwrk-midnight-verifiable-credential-digital-passport-0.1.0.tgz` —
+packed by the same `prepack` pipeline the CI smoke lane exercises (compact
+compile, TypeScript build, artifact copies). Dependencies resolve offline from
+a lockfile-pinned fixed-output fetch; the Compact compiler and circuit
+parameters come from the pinned `MediaNoxLabs/flake-collection` input. A bare
+`nix build` works too (`npm-artifacts` is the `default` package), and
+`nix flake check` audits the tarball contents (dist output, compact sources,
+helper scripts, no managed source maps, version consistency). Adding a new
+publishable package under `packages/` flows into this output automatically.
 
 > **Published-core note:** the family's core contract dependency
 > `@midnight-ntwrk/credential-compact@0.1.0-rc3` is published to npm alongside

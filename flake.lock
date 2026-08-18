@@ -8,11 +8,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786449051,
-        "narHash": "sha256-Er2+cbRKcilRx1EXrrxH9v0ILQ3GSWNC7VzSY4H7OV4=",
+        "lastModified": 1787062207,
+        "narHash": "sha256-cJw2mJGG7cDp/Pzxvd5uu+aLUJG4wC0td5BJtTBVK+U=",
         "owner": "MediaNoxLabs",
         "repo": "flake-collection",
-        "rev": "fbc948baae944d6a1fe813fe2d626e538b210027",
+        "rev": "d4224713296e1b156d9cc29107ad0dc46967b969",
         "type": "github"
       },
       "original": {
