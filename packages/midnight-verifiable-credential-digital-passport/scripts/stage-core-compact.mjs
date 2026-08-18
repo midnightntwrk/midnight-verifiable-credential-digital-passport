@@ -17,13 +17,13 @@
 // `@midnight-ntwrk/credential-compact` package into a local include path
 // (`../core-compact-staging/`, relative to `src/digital-passport-credential.compact`)
 // so the compact compiler can resolve the core `include` without depending on
-// compact 0.30.0's package-include syntax.
+// compact 0.31.1's package-include syntax.
 //
 // This is the build-time staging fallback selected by the OpenSpec change
 // `extract-digital-passport-credential` (Spike Outcome 1.2/1.3, design D7/D8):
-// it is independent of compact 0.30.0's package-specifier or node_modules-relative
-// include syntax. A clean confirmation of a direct include syntax (once the
-// toolchain aligns) will downgrade the build to a direct include and drop this
+// it is independent of compact 0.31.1's package-specifier or node_modules-relative
+// include syntax. A clean confirmation of a direct include syntax under the
+// current toolchain will downgrade the build to a direct include and drop this
 // staging step.
 //
 // The staged sources are a build artifact: they are git-ignored, excluded from
