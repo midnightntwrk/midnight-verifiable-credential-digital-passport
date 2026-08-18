@@ -38,10 +38,13 @@ the monorepo's openid transport package).
 
 ## Development
 
-The reproducible toolchain lives in the Nix flake, which provides Node.js 24,
-pnpm (via Corepack, honoring the `packageManager` pin), the Compact compiler
-(**0.30.0**, identical to the CI pin), and pre-populated Midnight circuit
-parameters for offline compilation.
+The reproducible toolchain lives in the Nix flake: Node.js 24, pnpm (via
+Corepack, honoring the `packageManager` pin), and the Compact compiler
+(**0.31.1**, identical to the CI pin) sourced from the
+[`MediaNoxLabs/flake-collection`](https://github.com/MediaNoxLabs/flake-collection)
+flake input — the same toolchain packaging the sibling repositories consume —
+plus Midnight circuit parameters vendored in-repo
+(`nix/midnight-circuit-params.nix`) and pre-populated for offline compilation.
 
 ```sh
 nix develop            # enter the dev shell (toolchain + circuit params ready)

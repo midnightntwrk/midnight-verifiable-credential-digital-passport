@@ -218,8 +218,9 @@ push/PR.
 ## Build and test
 
 This repository is a pnpm + turbo workspace with a Nix flake that pins the
-Compact compiler (0.30.0) and pre-populates the circuit parameters for offline
-compilation.
+Compact compiler (**0.31.1**, sourced from the `MediaNoxLabs/flake-collection`
+flake input) and pre-populates the circuit parameters for offline compilation
+from a derivation vendored in-repo (`nix/midnight-circuit-params.nix`).
 
 ```sh
 # one-time: enter the reproducible dev shell (provides node, pnpm, compact toolchain)
