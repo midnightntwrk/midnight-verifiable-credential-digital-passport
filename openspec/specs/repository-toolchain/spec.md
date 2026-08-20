@@ -24,7 +24,7 @@ The repository SHALL require Node.js >= 24 and pnpm >= 10, declared in the root 
 
 ### Requirement: Pinned Compact toolchain
 
-The Compact compiler version SHALL be pinned identically for CI and for the nix development shell. The CI lane SHALL install the compiler through the organization's setup-compact action pinned by commit SHA. The nix flake SHALL provide the compact toolchain and circuit parameters required for offline compilation: the toolchain sourced from the `MediaNoxLabs/flake-collection` flake input, and the circuit parameters vendored as a self-contained derivation in this repository. The flake SHALL NOT depend on the `midnight-did` repository for any build input. A build-time check SHALL fail if the provided toolchain version ever drifts from the pin.
+The Compact compiler version SHALL be pinned identically for CI and for the nix development shell. The CI lane SHALL install the compiler through the organization's setup-compact action pinned by commit SHA. The nix flake SHALL provide the compact toolchain and circuit parameters required for offline compilation, both sourced from the `MediaNoxLabs/flake-collection` flake input: the toolchain as `compact-toolchain` and the circuit parameters as `midnight-circuit-params`. The flake SHALL NOT depend on the `midnight-did` repository for any build input, and circuit parameters SHALL NOT be vendored as a derivation in this repository. A build-time check SHALL fail if the provided toolchain version ever drifts from the pin.
 
 #### Scenario: Compiler versions agree
 
@@ -34,7 +34,7 @@ The Compact compiler version SHALL be pinned identically for CI and for the nix 
 #### Scenario: Toolchain is upstream-independent
 
 - **WHEN** the nix flake inputs are inspected
-- **THEN** the compact toolchain resolves through `MediaNoxLabs/flake-collection` and the circuit parameters resolve from a derivation vendored in this repository, with no `midnight-did` input
+- **THEN** the compact toolchain and the circuit parameters both resolve through `MediaNoxLabs/flake-collection`, with no `midnight-did` input and no locally vendored circuit-parameter derivation
 
 #### Scenario: Offline contract compilation
 

@@ -218,9 +218,9 @@ push/PR.
 ## Build and test
 
 This repository is a pnpm + turbo workspace with a Nix flake that pins the
-Compact compiler (**0.31.1**, sourced from the `MediaNoxLabs/flake-collection`
-flake input) and pre-populates the circuit parameters for offline compilation
-from a derivation vendored in-repo (`nix/midnight-circuit-params.nix`).
+Compact compiler (**0.31.1**) and the Midnight circuit parameters, both
+sourced from the `MediaNoxLabs/flake-collection` flake input and
+pre-populated for offline compilation.
 
 ```sh
 # one-time: enter the reproducible dev shell (provides node, pnpm, compact toolchain)
@@ -243,6 +243,24 @@ The core compact contract is consumed through the published
 resolves its `./credentials.compact` subpath and stages the compact sources into
 a local include path before `compact compile`, so the family contract has no
 source-level coupling to the monorepo.
+
+## Distribution
+
+The publishable tarball can be produced two ways, and both run the same
+`prepack` build pipeline (compact compile + TypeScript build + artifact
+copies):
+
+```sh
+pnpm --filter @midnight-ntwrk/midnight-verifiable-credential-digital-passport pack
+nix build .#npm-artifacts   # hermetic: offline deps, pinned toolchain, flake-supplied circuit params
+```
+
+The nix output is a flat directory of `.tgz` tarballs (one per publishable
+workspace package); downstream repositories can consume it directly as a
+flake input (`nix build github:midnightntwrk/midnight-verifiable-credential-digital-passport#npm-artifacts`),
+with the `npm-artifacts-contents` flake check guarding the tarball contents
+(dist output, compact sources, scripts, no managed source maps, version
+consistency).
 
 ## Related docs
 
