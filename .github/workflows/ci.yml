@@ -30,6 +30,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  supply-chain:
+    # Dedicated gate for the supply-chain install policy declared in
+    # pnpm-workspace.yaml. pnpm enforces minimumReleaseAge /
+    # trustPolicy no-downgrade / blockExoticSubdeps only during dependency
+    # RESOLUTION, which every frozen install (all other lanes, nix packaging)
+    # skips entirely — so this lane re-enforces the policy against the exact
+    # artifact those installs consume: pnpm-lock.yaml. It fails closed on
+    # versions younger than the release-age floor, on trust downgrades, on
+    # exotic subdependencies, and on packages whose registry metadata cannot
+    # be verified.
+    name: Enforce supply-chain install policy (pnpm-lock.yaml)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # ratchet:actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js, pnpm, and Compact
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Verify install policy and lockfile against it
+        run: pnpm run verify:install-policy && pnpm run verify:lockfile-supply-chain
+
   verify:
     # Build-evidence lane (repository-toolchain: "Build evidence for the migration").
     # Runs compact compilation from source, the package build, and the ported

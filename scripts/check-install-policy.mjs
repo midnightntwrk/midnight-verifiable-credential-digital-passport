@@ -51,8 +51,19 @@ const EXPECTED_POLICY = [
   { key: 'blockExoticSubdeps', type: 'boolean', value: true },
   { key: 'minimumReleaseAge', type: 'number', value: 10080 },
   { key: 'trustPolicy', type: 'string', value: 'no-downgrade' },
-  { key: 'minimumReleaseAgeExclude', type: 'array', value: [] },
-  { key: 'trustPolicyExclude', type: 'array', value: [] },
+  // The exclusion list mirrors the org Renovate preset's internal-package
+  // fast-track lanes (see pnpm-workspace.yaml); any change here must stay in
+  // sync with that reconciliation decision in the same, reviewable commit.
+  {
+    key: 'minimumReleaseAgeExclude',
+    type: 'array',
+    value: ['@midnight-ntwrk/*', '@midnightntwrk/*'],
+  },
+  {
+    key: 'trustPolicyExclude',
+    type: 'array',
+    value: ['eslint-import-resolver-typescript@3.10.1', 'semver@6.3.1'],
+  },
   // ignoredBuiltDependencies is itself security-relevant policy: pnpm
   // silently skips the build scripts of anything listed here. Its exact
   // content is pinned, so adding a package to (or dropping one from) the

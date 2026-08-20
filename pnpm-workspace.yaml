@@ -5,10 +5,41 @@ packages:
 # Goal: a freshly published compromised package cannot enter this repo
 # through `pnpm install`; every deviation is explicit in this file.
 blockExoticSubdeps: true
+# Release-age floor (minutes). Note: this is enforced by pnpm's resolver, which
+# `pnpm install --frozen-lockfile` skips entirely; scripts/check-lockfile-supply-chain.mjs
+# therefore re-enforces it against pnpm-lock.yaml contents in CI (see that file).
 minimumReleaseAge: 10080
-minimumReleaseAgeExclude: []
+# Exclusions mirror the no-cooldown fast-track lanes of the adopted org Renovate
+# preset (local>midnightntwrk/renovate-config, renovate.json) so the two policies
+# never fight: the preset fast-tracks internal @midnight-ntwrk/** and
+# @midnightntwrk/** SDK packages ("Internal packages: no cooldown"), so pnpm's
+# resolver must not reject exactly those freshly published versions when the
+# bots regenerate pnpm-lock.yaml. The preset's internal GitHub-Actions fast-track
+# (midnightntwrk/**) never touches npm resolution, and its 14-day global cooldown
+# is stricter than this 7-day floor, so all its regular update lanes resolve fine.
+#
+# Security fast-track (vulnerabilityAlerts: "at any time"): an urgent third-party
+# CVE fix younger than 7 days still cannot resolve until it is 7 days old. When a
+# security fix must land sooner, add that one package to this list in the same,
+# reviewed security PR (and drop it again afterwards) — the deviation stays
+# explicit in this file, which is exactly how this policy is meant to change hands.
+minimumReleaseAgeExclude:
+  - "@midnight-ntwrk/*"
+  - "@midnightntwrk/*"
 trustPolicy: no-downgrade
-trustPolicyExclude: []
+# Exact-version exceptions to the trust policy. Both entries predate this policy
+# and are the terminal releases of their lines; they fail pnpm's strictly
+# publish-date-based downgrade check only because an unrelated NEWER semver
+# line (semver@7.5.x, 2023) and the surrounding eslint-import-resolver-typescript
+# releases carry provenance while these two maintenance releases do not. The
+# exclusions are version-scoped on purpose: any OTHER or future version of
+# these packages with weakened trust evidence is still rejected (by pnpm's
+# resolver and by scripts/check-lockfile-supply-chain.mjs). Without them, every
+# non-frozen resolution — including Renovate/Dependabot lockfile regeneration —
+# fails with ERR_PNPM_TRUST_DOWNGRADE and the lockfile becomes unresolvable.
+trustPolicyExclude:
+  - "eslint-import-resolver-typescript@3.10.1"
+  - "semver@6.3.1"
 
 # Build scripts are opt-in. Packages whose build scripts pnpm skipped silently
 # before this policy are declared here so the skip becomes explicit and
