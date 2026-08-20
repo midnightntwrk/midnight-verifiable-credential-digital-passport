@@ -26,7 +26,7 @@ stdenv.mkDerivation {
 
   outputHashMode = "recursive";
   outputHashAlgo = "sha256";
-  outputHash = "sha256-oIO+yI3P6B2MMU2SpjhSOx2jqH7Y0KwTznv811aJyKY=";
+  outputHash = "sha256-cOYqjUu3z5DexDQm5TIM9YCzgOlE2Ek9bz+0dDTE2F0=";
 
   dontUnpack = true;
   dontConfigure = true;
@@ -55,6 +55,11 @@ stdenv.mkDerivation {
     mkdir -p "$COREPACK_HOME" "$out/pnpm-store"
 
     corepack pnpm fetch --store-dir "$out/pnpm-store"
+
+    # pnpm stamps wall-clock `checkedAt` into the store index; zero them so the
+    # fixed-output hash is reproducible across machines.
+    find "$out/pnpm-store/v10/index" -type f -name '*.json' \
+      -exec sed -i 's/"checkedAt":[0-9]*/"checkedAt":0/g' {} +
 
     runHook postBuild
   '';
