@@ -1,2 +1,18 @@
 packages:
   - "packages/*"
+
+# Supply-chain install policy (mirrors the midnight-did family policy).
+# Goal: a freshly published compromised package cannot enter this repo
+# through `pnpm install`; every deviation is explicit in this file.
+blockExoticSubdeps: true
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude: []
+trustPolicy: no-downgrade
+trustPolicyExclude: []
+
+# Build scripts are opt-in. Packages whose build scripts pnpm skipped silently
+# before this policy are declared here so the skip becomes explicit and
+# reviewable; anything new still requires an explicit decision.
+ignoredBuiltDependencies:
+  - esbuild
+  - unrs-resolver
