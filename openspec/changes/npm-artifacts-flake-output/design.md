@@ -36,7 +36,7 @@ The build sets `COMPACT_DIRECTORY = ${compact-toolchain}` and seeds a writable `
 
 ### D5 — Auto-discovery at eval time
 
-A small nix function reads `packages/*/package.json` (via `builtins.readFile` + `fromJSON`) and selects those without `"private": true`. This is pure (reads of the flake's own source) and keeps "all npm tarballs" literal. Alternative: an explicit package list in `flake.nix` — rejected per the proposal: silently misses new publishable packages.
+A small nix function reads `packages/*/package.json` (via `builtins.readFile` + `fromJSON`) and selects those without `"private": true`. This is pure (reads of the flake's own source) and keeps "all npm tarballs" literal. Manifest-less directories under `packages/` are skipped, mirroring pnpm's workspace semantics, rather than crashing evaluation. Alternative: an explicit package list in `flake.nix` — rejected per the proposal: silently misses new publishable packages.
 
 ### D6 — Node/pnpm pinned like the dev shell
 
@@ -48,7 +48,7 @@ The derivation uses `nodejs_24` and corepack-provisioned `pnpm@10.34.1` (via `CO
 
 ### D8 — Check implementation: `runCommand` tarball audit
 
-`checks.npm-artifacts-contents` untars each `.tgz` and asserts: `package/dist/` non-empty and contains the managed contract index, `package/src/**/*.compact` present, `package/scripts/*.mjs` present, no `*.map` under `package/dist/managed/`, and the tarball filename's version equals the manifest's `version` (read at eval time). Style follows the existing `pinned-compact-compiler-version` check. Alternative: reuse `smoke.mjs` inside nix — rejected: the smoke is an install-and-run round-trip, heavier than the content audit this change needs.
+`checks.npm-artifacts-contents` untars each `.tgz` and asserts: `package/dist/` non-empty and contains the managed contract index, `package/src/**/*.compact` present, `package/scripts/*.mjs` present, no `*.map` under `package/dist/managed/`, and the tarball filename's version equals the manifest's `version` (read at eval time). Style follows the existing `pinned-compact-compiler-version` check. Alternative: reuse `smoke.mjs` inside nix — rejected: the smoke is an install-and-run round-trip, heavier than the content audit this change needs. Compact-specific assertions (managed contract index, `.compact` sources, helper scripts, no managed source maps) are scoped at eval time to packages whose `src/` tree contains `.compact` files, so non-Compact publishable packages discovered per D5 pass the audit without flake edits.
 
 ## Risks / Trade-offs
 

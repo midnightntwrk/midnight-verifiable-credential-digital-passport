@@ -34,7 +34,7 @@ The tarball derivation SHALL build in a sandboxed environment with no network ac
 
 ### Requirement: Tarball content check
 
-The flake SHALL expose a check that builds the tarballs and verifies the distribution invariants: each tarball contains the compiled distribution output, the compact contract sources, and the declared helper scripts; contains no managed-code source maps or secret material; and its filename version matches the version declared in the corresponding package manifest.
+The flake SHALL expose a check that builds the tarballs and verifies the distribution invariants: each tarball contains the compiled distribution output, contains no secret material, and its filename version matches the version declared in the corresponding package manifest. For packages whose `src/` tree contains `.compact` contract sources (detected at evaluation time), the check SHALL additionally require the managed contract index, the compact contract sources, and the declared helper scripts in the tarball, and that no managed-code source maps ship. Compact-specific invariants SHALL NOT be applied to packages without `.compact` sources, so newly added non-Compact publishable packages satisfy the check without flake edits.
 
 #### Scenario: Complete tarball passes
 
@@ -45,3 +45,8 @@ The flake SHALL expose a check that builds the tarballs and verifies the distrib
 
 - **WHEN** a packed tarball is missing the compiled distribution output or contains a managed-code source map
 - **THEN** the check fails with an error naming the offending tarball and violation
+
+#### Scenario: Non-Compact publishable package
+
+- **WHEN** a newly added publishable package under `packages/` has no `.compact` sources
+- **THEN** the check applies only the universal invariants (dist output, version consistency, no secret material), and the package is packed and audited without flake edits

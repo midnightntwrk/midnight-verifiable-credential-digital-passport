@@ -54,12 +54,37 @@
       relativeToSelf =
         path: lib.removePrefix (toString self + "/") (toString path);
 
+      # Whether a package's sources include any `.compact` contract
+      # (eval-time scan of its src/ tree). Drives which content-audit
+      # invariants apply to the package's tarball.
+      hasCompactSources =
+        srcDir:
+        let
+          walk =
+            path:
+            let
+              entries = builtins.readDir path;
+            in
+            lib.any
+              (
+                name:
+                if entries.${name} == "directory" then walk "${path}/${name}" else lib.hasSuffix ".compact" name
+              )
+              (lib.attrNames entries);
+        in
+        builtins.pathExists srcDir && walk srcDir;
+
       # Auto-discovery: every non-private packages/*/package.json.
+      # Manifest-less directories under packages/ are not workspace
+      # packages (pnpm ignores them too) and are skipped rather than
+      # crashing evaluation.
       publishablePackages =
         let
           packagesRoot = "${self}/packages";
           entries = builtins.readDir packagesRoot;
-          packageDirs = lib.attrNames (lib.filterAttrs (_: type: type == "directory") entries);
+          isPackageDir =
+            dir: type: type == "directory" && builtins.pathExists "${packagesRoot}/${dir}/package.json";
+          packageDirs = lib.attrNames (lib.filterAttrs isPackageDir entries);
           manifests = map (dir: {
             dir = "packages/${dir}";
             manifest = builtins.fromJSON (builtins.readFile "${packagesRoot}/${dir}/package.json");
@@ -80,6 +105,9 @@
               name = manifest.name;
               version = manifest.version;
               inherit baseName tarballName;
+              # Compact-contract family membership, from the package's own
+              # sources; see hasCompactSources above.
+              compact = hasCompactSources "${self}/${dir}/src";
             }
           )
           publishable;
@@ -175,19 +203,25 @@
               if [ -z "$(find "$root/dist" -type f -print -quit)" ]; then
                 violation "compiled distribution output (package/dist/) is missing or empty"
               fi
-              if ! ls "$root"/dist/managed/*/contract/index.js >/dev/null 2>&1; then
-                violation "managed contract index (package/dist/managed/<contract>/contract/index.js) is missing"
-              fi
-              if [ -z "$(find "$root/src" -type f -name '*.compact' -print -quit)" ]; then
-                violation "compact contract sources (package/src/**/*.compact) are missing"
-              fi
-              if [ -z "$(find "$root/scripts" -type f -name '*.mjs' -print -quit)" ]; then
-                violation "build helper scripts (package/scripts/*.mjs) are missing"
-              fi
-              if maps="$(find "$root/dist/managed" -type f -name '*.map' -print)" && [ -n "$maps" ]; then
-                echo "$maps" >&2
-                violation "managed-code source maps are shipped under package/dist/managed/"
-              fi
+              # Compact-contract shape invariants apply only to packages
+              # shipping `.compact` sources (detected at eval time), so
+              # non-Compact publishable packages flow through auto-discovery
+              # with no flake edits.
+              ${lib.optionalString pkg.compact ''
+                if ! ls "$root"/dist/managed/*/contract/index.js >/dev/null 2>&1; then
+                  violation "managed contract index (package/dist/managed/<contract>/contract/index.js) is missing"
+                fi
+                if [ -z "$(find "$root/src" -type f -name '*.compact' -print -quit)" ]; then
+                  violation "compact contract sources (package/src/**/*.compact) are missing"
+                fi
+                if [ -z "$(find "$root/scripts" -type f -name '*.mjs' -print -quit)" ]; then
+                  violation "build helper scripts (package/scripts/*.mjs) are missing"
+                fi
+                if maps="$(find "$root/dist/managed" -type f -name '*.map' -print)" && [ -n "$maps" ]; then
+                  echo "$maps" >&2
+                  violation "managed-code source maps are shipped under package/dist/managed/"
+                fi
+              ''}
               if secrets="$(find "$root" -type f \( -name '*.pem' -o -name '*.key' -o -name '.env' -o -name '.env.*' \) -print)" && [ -n "$secrets" ]; then
                 echo "$secrets" >&2
                 violation "possible secret material is shipped in the tarball"
@@ -198,7 +232,7 @@
         pkgs.runCommand "check-npm-artifacts-contents"
           {
             nativeBuildInputs = [ pkgs.jq ];
-            meta.description = "Audits the npm-artifacts tarballs for the distribution invariants (dist output, compact sources, scripts, no managed source maps, version consistency)";
+            meta.description = "Audits the npm-artifacts tarballs for the distribution invariants (dist output, version consistency, no secret material; compact-contract shape for packages shipping .compact sources)";
           }
           ''
             set -euo pipefail
