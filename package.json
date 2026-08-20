@@ -18,7 +18,8 @@
     "test": "turbo run test",
     "test:ci": "turbo run test:ci",
     "smoke": "pnpm --filter smoke-consumer smoke",
-    "all": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:ci"
+    "verify:install-policy": "node scripts/check-install-policy.mjs",
+    "all": "pnpm run verify:install-policy && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:ci"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

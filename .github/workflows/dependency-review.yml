@@ -2,7 +2,11 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: [main]
+    # The dependency bots (dependabot.yml target-branch, renovate.json
+    # baseBranches) open their bump PRs against develop, so the vulnerability /
+    # license gate must run for PRs targeting develop as well as main —
+    # otherwise a bump to a vulnerable or unlicensed version merges unscanned.
+    branches: [main, develop]
 
 permissions:
   contents: read
