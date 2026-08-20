@@ -31,97 +31,50 @@ const fail = (message) => {
 };
 const pass = (message) => console.log(`PASS ${message}`);
 
+// Parse YAML with a real parser (js-yaml) instead of hand-rolled line
+// matching: comments (including trailing inline ones), quoting, and flow vs
+// block sequences must resolve exactly the way a YAML implementation reads
+// them, or this guard would false-fail (or false-pass) on valid config.
+let loadYaml;
+let yamlSchema;
+try {
+  ({ load: loadYaml, CORE_SCHEMA: yamlSchema } = await import('js-yaml'));
+} catch (error) {
+  fail(`cannot load the js-yaml parser (run "pnpm install" first): ${error.message}`);
+}
+
 // The supply-chain install policy this repository mandates. Expected values
-// are intentional: a policy change must update this file in the same commit,
-// so it can never drift silently.
+// are intentional and exhaustive, including for the build-script allowlist: a
+// policy change must update this file in the same commit, so it can never
+// drift silently.
 const EXPECTED_POLICY = [
   { key: 'blockExoticSubdeps', type: 'boolean', value: true },
   { key: 'minimumReleaseAge', type: 'number', value: 10080 },
   { key: 'trustPolicy', type: 'string', value: 'no-downgrade' },
-  { key: 'minimumReleaseAgeExclude', type: 'array', empty: true },
-  { key: 'trustPolicyExclude', type: 'array', empty: true },
-  { key: 'ignoredBuiltDependencies', type: 'array' },
+  { key: 'minimumReleaseAgeExclude', type: 'array', value: [] },
+  { key: 'trustPolicyExclude', type: 'array', value: [] },
+  // ignoredBuiltDependencies is itself security-relevant policy: pnpm
+  // silently skips the build scripts of anything listed here. Its exact
+  // content is pinned, so adding a package to (or dropping one from) the
+  // allowlist fails this guard until the expectation is updated in the same,
+  // reviewable commit. Order is not meaningful to pnpm, so entries are
+  // compared as sets, not sequences.
+  { key: 'ignoredBuiltDependencies', type: 'array', value: ['esbuild', 'unrs-resolver'] },
 ];
 const EXPECTED_NPMRC = new Map([['min-release-age', '7']]);
 
-const unquote = (value) => {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-};
-
-const toScalar = (raw) => {
-  const value = unquote(raw);
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  if (value !== '' && !Number.isNaN(Number(value))) return Number(value);
-  return value;
-};
-
 /**
- * Extract the top-level keys of a (small, flat) YAML document with their
- * normalized values: scalars stay scalars, `[]` / `- item` blocks become
- * arrays. Only the requested keys are normalized; other top-level keys are
- * recorded as present but left unparsed. Anything that cannot be understood
+ * Parse pnpm-workspace.yaml into a plain object mapping its top-level keys to
+ * their values. Scalars, sequences, and nested structures come back exactly
+ * as the YAML parser reads them. Anything that is not a top-level mapping
  * throws, so the guard fails closed on surprises.
  */
-function readTopLevelYaml(file, keysToNormalize) {
-  const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-  const topKeys = new Set();
-  const blocks = new Map(); // key -> { inline, body: [] }
-  let current = null;
-
-  for (const line of lines) {
-    if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
-    const isTopLevel = /^[^\s#][^\s]*:/.test(line);
-    if (isTopLevel) {
-      const separator = line.indexOf(':');
-      const key = line.slice(0, separator).trim();
-      current = key;
-      topKeys.add(key);
-      blocks.set(key, { inline: line.slice(separator + 1).trim(), body: [] });
-    } else {
-      if (current === null) {
-        throw new Error(`${file}: cannot parse line outside any key: "${line}"`);
-      }
-      blocks.get(current).body.push(line);
-    }
+function readWorkspacePolicy(file) {
+  const doc = loadYaml(readFileSync(file, 'utf8'), { schema: yamlSchema });
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
+    throw new Error(`${file}: expected a top-level YAML mapping`);
   }
-
-  const normalized = new Map();
-  for (const key of keysToNormalize) {
-    if (!topKeys.has(key)) continue;
-    const { inline, body } = blocks.get(key);
-    if (inline !== '') {
-      if (inline.startsWith('[')) {
-        const inner = inline.replace(/^\[/, '').replace(/\]$/, '').trim();
-        normalized.set(key, inner === '' ? [] : inner.split(',').map(unquote));
-      } else {
-        normalized.set(key, toScalar(inline));
-      }
-      continue;
-    }
-    const items = [];
-    for (const line of body) {
-      const item = line.trim();
-      if (item.startsWith('- ')) {
-        items.push(toScalar(item.slice(2)));
-      } else if (/^[^\s#-][^\s]*:/.test(item)) {
-        throw new Error(
-          `${file}: policy key "${key}" has an unexpected nested mapping; expected a scalar or list`,
-        );
-      } else {
-        throw new Error(`${file}: cannot parse line under "${key}": "${line}"`);
-      }
-    }
-    normalized.set(key, items);
-  }
-  return { topKeys, normalized };
+  return doc;
 }
 
 /** Resolve a callable pnpm command line, preferring the running pnpm itself. */
@@ -156,11 +109,19 @@ function pnpmConfigGetJson(key) {
   try {
     return JSON.parse(stdout);
   } catch (error) {
-    throw new Error(`pnpm config get --json ${key} returned non-JSON output "${stdout}" (${error.message})`);
+    throw new Error(
+      `pnpm config get --json ${key} returned non-JSON output "${stdout}" (${error.message})`,
+    );
   }
 }
 
 const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Same set of entries, order-insensitive (catches adds, drops, duplicates). */
+const sameSet = (actual, expected) =>
+  Array.isArray(actual) &&
+  actual.length === expected.length &&
+  JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
 
 let pnpmRun;
 try {
@@ -169,22 +130,19 @@ try {
   fail(error.message);
 }
 
-if (pnpmRun) {
+if (pnpmRun && loadYaml) {
   const workspaceFile = join(repoRoot, 'pnpm-workspace.yaml');
   let workspace;
   try {
-    workspace = readTopLevelYaml(
-      workspaceFile,
-      EXPECTED_POLICY.map(({ key }) => key),
-    );
+    workspace = readWorkspacePolicy(workspaceFile);
   } catch (error) {
     fail(error.message);
     workspace = null;
   }
 
   for (const expectation of EXPECTED_POLICY) {
-    const { key } = expectation;
-    if (!workspace || !workspace.topKeys.has(key)) {
+    const { key, value: expected } = expectation;
+    if (!workspace || !Object.hasOwn(workspace, key)) {
       fail(
         `pnpm-workspace.yaml: missing top-level key "${key}" — pnpm silently ` +
           `ignores misspelled keys, so a typo here would disable the install ` +
@@ -193,26 +151,13 @@ if (pnpmRun) {
       continue;
     }
 
-    const staticValue = workspace.normalized.get(key);
-    const expected =
-      'value' in expectation
-        ? expectation.value
-        : expectation.empty
-          ? []
-          : undefined;
-
-    let staticOk = true;
-    if (expectation.type === 'array') {
-      staticOk = Array.isArray(staticValue) && staticValue.every((v) => typeof v === 'string');
-      if (staticOk && 'empty' in expectation) staticOk = staticValue.length === 0;
-    } else if (typeof staticValue !== expectation.type || !Object.is(staticValue, expected)) {
-      staticOk = false;
-    }
+    const staticValue = workspace[key];
+    const staticOk =
+      expectation.type === 'array'
+        ? sameSet(staticValue, expected) && staticValue.every((v) => typeof v === 'string')
+        : typeof staticValue === expectation.type && Object.is(staticValue, expected);
     if (staticOk) {
-      pass(
-        `pnpm-workspace.yaml: ${key} = ${JSON.stringify(staticValue)}` +
-          (expected === undefined ? '' : ` (exact policy value)`),
-      );
+      pass(`pnpm-workspace.yaml: ${key} = ${JSON.stringify(staticValue)} (exact policy value)`);
     } else {
       fail(
         `pnpm-workspace.yaml: ${key} is ${JSON.stringify(staticValue)}, expected ` +
