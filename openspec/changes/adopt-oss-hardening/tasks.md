@@ -25,4 +25,4 @@
 ## 4. Change hygiene
 
 - [x] 4.1 Update `CHANGELOG.md` under Unreleased with the hardening adoption summary
-- [ ] 4.2 Validate the change (`openspec validate adopt-oss-hardening --strict`) and confirm every task above is checked with its verification noted
+- [x] 4.2 Validate the change (`openspec validate adopt-oss-hardening --strict`) and confirm every task above is checked with its verification noted
