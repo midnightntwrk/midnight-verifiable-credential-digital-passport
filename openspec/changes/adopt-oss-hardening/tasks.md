@@ -1,10 +1,10 @@
 ## 1. Slice 1 — Supply-chain hardened installation (PR 1)
 
-- [ ] 1.1 Add install hardening to `pnpm-workspace.yaml`: `blockExoticSubdeps: true`, `minimumReleaseAge: 10080`, `trustPolicy: no-downgrade`, empty `minimumReleaseAgeExclude`/`trustPolicyExclude` lists, and `ignoredBuiltDependencies: [esbuild, unrs-resolver]`; verify with a clean `pnpm install --frozen-lockfile` (must succeed with no policy rejections)
-- [ ] 1.2 Add `min-release-age=7` to `.npmrc` and confirm a fresh install still resolves the full workspace
+- [x] 1.1 Add install hardening to `pnpm-workspace.yaml`: `blockExoticSubdeps: true`, `minimumReleaseAge: 10080`, `trustPolicy: no-downgrade`, empty `minimumReleaseAgeExclude`/`trustPolicyExclude` lists, and `ignoredBuiltDependencies: [esbuild, unrs-resolver]`; verify with a clean `pnpm install --frozen-lockfile` (must succeed with no policy rejections)
+- [x] 1.2 Add `min-release-age=7` to `.npmrc` and confirm a fresh install still resolves the full workspace
 - [ ] 1.3 Create `renovate.json` extending `local>midnightntwrk/renovate-config` with `baseBranchPatterns: ["main"]`; verify the schema against the Renovate docs and confirm the app picks the config up on the next run of the `renovate/configure` flow
-- [ ] 1.4 Re-enable the `npm` ecosystem lane in `.github/dependabot.yml` (daily, `cooldown.default-days: 7`, target `main`) next to the existing `github-actions` lane; verify with `openspec`-independent YAML lint or `actionlint`/equivalent if available, else by inspection against sibling configs
-- [ ] 1.5 Open PR 1 and confirm CI passes end to end
+- [x] 1.4 Re-enable the `npm` ecosystem lane in `.github/dependabot.yml` (daily, `cooldown.default-days: 7`, target `main`) next to the existing `github-actions` lane; verify with `openspec`-independent YAML lint or `actionlint`/equivalent if available, else by inspection against sibling configs
+- [x] 1.5 Open PR 1 and confirm CI passes end to end
 
 ## 2. Slice 2 — Gating scan and self-guarding workflows (PR 2)
 

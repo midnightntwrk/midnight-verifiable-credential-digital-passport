@@ -1,6 +1,14 @@
 version: 2
 
 updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -8,31 +16,3 @@ updates:
     cooldown:
       default-days: 7
 
-#  - package-ecosystem: "cargo"
-#    directory: "/"
-#    registries: "*"
-#    schedule:
-#      interval: "daily"
-#    cooldown:
-#      default-days: 7
-#
-#  - package-ecosystem: "npm"
-#    directory: "/"
-#    schedule:
-#      interval: "daily"
-#    cooldown:
-#      default-days: 7
-#
-#  - package-ecosystem: "docker"
-#    directory: "/"
-#    schedule:
-#      interval: "weekly"
-#    cooldown:
-#      default-days: 7
-#
-#registries:
-#   github:
-#     type: git
-#     url: https://github.com
-#     username: MidnightCI
-#     password: ${{ secrets.MIDNIGHTCI_REPO }}

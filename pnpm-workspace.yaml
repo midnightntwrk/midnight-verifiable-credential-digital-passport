@@ -1,2 +1,19 @@
 packages:
   - "packages/*"
+
+# Supply-chain hardening (matches midnight-did):
+# - block exotic-URL subdependencies (git/tarball/http resolvers in the graph)
+# - minimum release age of 10080 minutes (7 days) before a version is installable
+# - no-downgrade trust policy for registry attestations
+# Exemptions must be listed explicitly below so every one is a reviewable diff.
+blockExoticSubdeps: true
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+minimumReleaseAgeExclude: []
+trustPolicyExclude: []
+
+# Declared (reviewed) build-script allowances: pnpm skips the install scripts
+# of these otherwise-silent dependencies instead of executing them.
+ignoredBuiltDependencies:
+  - esbuild
+  - unrs-resolver
