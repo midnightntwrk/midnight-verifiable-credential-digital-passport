@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Adopted the OSS security-hardening posture the sibling repositories
+  (`midnight-did`, `midnight-verifiable-credentials`) already operate:
+  - **Supply-chain hardened installs**: `pnpm-workspace.yaml` now enforces
+    `blockExoticSubdeps`, a 7-day `minimumReleaseAge`, and a `no-downgrade`
+    trust policy (empty, explicit exclusion lists), and declares the
+    previously-silent build-script skips (`esbuild`, `unrs-resolver`) as
+    `ignoredBuiltDependencies`; `.npmrc` gains `min-release-age=7`.
+  - **Dependency update automation**: the npm Dependabot lane is re-enabled
+    (daily, 7-day cooldown) next to github-actions, and `renovate.json`
+    activates the installed Renovate app via the org preset
+    (`local>midnightntwrk/renovate-config`).
+  - **Fail-closed scan lane**: the Scan workflow pins
+    `midnightntwrk/upload-sarif-github-action` to `9da05ae`, fails on
+    high-severity findings, skips the duplicated Scorecard pass, disables
+    checkout credential persistence, and runs on `ubuntu-24.04`.
+  - **Self-guarding workflows**: two CI-enforced checks
+    (`check:security-workflows`, ported from midnight-verifiable-credentials
+    and adapted to this repo's main-only branch policy; and
+    `check:vulnerability-exceptions`) assert full-SHA action pinning,
+    `persist-credentials: false`, structural workflow contracts, and
+    documented/owned/expiring OSV exceptions; both run in the CI verify lane
+    via the root `all` script.
+  - **Vulnerability exception governance**: `osv-scanner.toml` (currently
+    empty) paired with `docs/security/vulnerability-exceptions.md`; every
+    future ignored advisory must be documented with an accountable owner and
+    an expiry, enforced in CI.
+  - **Workflow pin tidy-up**: `actions/checkout` normalized to v7.0.1 and
+    `setup-node` to v7.0.0 (sibling-pinned SHAs) across `ci.yml`,
+    `scorecard.yml`, `dependency-review.yml`, and the setup composite;
+    CODEOWNERS now guards `scorecard.yml` and `dependency-review.yml` and the
+    dependabot entry points at `/.github/dependabot.yml` (was a dangling
+    workflows path); README carries the OpenSSF Scorecard badge.
+- Added a digital-passport threat-model proposal at
+  `docs/security/digital-passport-threat-model.md` (promotion into
+  `SECURITY.md` is `@midnightntwrk/mn-security`'s decision).
+
 ### Changed
 
 - Pinned the Compact toolchain at **0.31.1** (was 0.30.0), matching the
