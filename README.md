@@ -1,5 +1,7 @@
 # midnight-verifiable-credential-digital-passport
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/badge)](https://scorecard.dev/viewer/?uri=github.com/midnightntwrk/midnight-verifiable-credential-digital-passport)
+
 The standalone home of the **digital-passport verifiable credential family** for
 Midnight. This is the first credential family to graduate out of the
 [`midnight-verifiable-credentials`](https://github.com/midnightntwrk/midnight-verifiable-credentials)
