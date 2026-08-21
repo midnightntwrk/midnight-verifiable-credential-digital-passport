@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@ai-agent'
 created_date: '2026-08-20 19:40'
-updated_date: '2026-08-21 06:34'
+updated_date: '2026-08-21 13:48'
 labels: []
 dependencies: []
 ordinal: 1000
@@ -22,8 +22,8 @@ Adopt the midnight-did supply-chain install policy so newly published compromise
 - [x] #1 pnpm install --frozen-lockfile succeeds on a clean checkout with the new workspace settings
 - [x] #2 pnpm-workspace.yaml declares blockExoticSubdeps: true, minimumReleaseAge: 10080, trustPolicy: no-downgrade, with empty exclusion lists
 - [x] #3 Build-script policy is explicit: ignoredBuiltDependencies lists every package pnpm would otherwise skip silently
-- [x] #4 .npmrc sets min-release-age=7
-- [x] #5 renovate.json extends local>midnightntwrk/renovate-config and targets main only
+- [x] #4 .npmrc sets minimum-release-age=10080 (7 days) — corrected in review round 1 from min-release-age=7, a spelling pnpm 10.34.1 silently ignores
+- [x] #5 renovate.json extends local>midnightntwrk/renovate-config and targets develop via baseBranchPatterns — corrected in review round 1 from baseBranches ["main"]; main is a skeleton branch with no npm manifests, so a main-only lane would never produce npm update PRs
 - [x] #6 dependabot.yml has an active npm ecosystem lane (directory /) with a schedule and 7-day cooldown
 - [ ] #7 CI verify and smoke lanes pass on the PR
 <!-- AC:END -->
@@ -51,5 +51,11 @@ author: @ai-agent
 created: 2026-08-21 06:34
 ---
 AC#7 (CI verify+smoke lanes on the PR) intentionally left unchecked: this run was forbidden to push or open a PR; both lanes passed locally in a clean worktree (pnpm run all, pnpm --filter smoke-consumer smoke). Out-of-scope observation for review: pnpm 10.34.1 does not consume the .npmrc key min-release-age (0 occurrences in its dist; only minimum-release-age is read) — the effective 7-day guard is minimumReleaseAge: 10080 in pnpm-workspace.yaml, and min-release-age=7 mirrors the midnight-did policy verbatim as specified. Renovate validator also emitted a cosmetic migration WARN suggesting baseBranchPatterns over baseBranches; baseBranches kept since the AC and the pinned Renovate app expect it.
+
+Review round 1 (Claude /code-review on PR #11) corrections applied: (1) .npmrc min-release-age=7 renamed to minimum-release-age=10080 — pnpm 10.34.1 ignores the former key entirely (verified via `pnpm config get`: recognized key resolves, pnpm-workspace.yaml still wins with the identical 10080 so install behavior is unchanged); (2) renovate.json baseBranches ["main"] replaced with baseBranchPatterns ["develop"] — origin/main is a manifest-less skeleton (no package.json/pnpm-workspace.yaml/packages), confirmed via `git ls-tree origin/main`, so a main-only Renovate lane would never surface npm updates, and develop is where every dependency actually lives and where update PRs must land; (3) dependabot.yml npm lane gains target-branch: develop so Dependabot reads develop's manifests and opens npm PRs against develop (the github-actions lane keeps defaulting to main, matching merged bot PR #3). Both bots still need their config files on the default branch to activate, which happens through the repo's normal develop→main sync (main is currently an ancestor of develop). Renovate field renamed to the current baseBranchPatterns, clearing the validator's deprecation warning as a side effect.
 ---
+author: @ai-agent
+created: 2026-08-21 13:48
+---
+Claude /code-review round 1 on PR #11 flagged three findings; two blocking (dead .npmrc key; update lanes aimed at manifest-less main) fixed in the round-1 commit, one non-blocking (deprecated baseBranches field) fixed alongside since the line was being edited anyway. Renovate re-validated with renovate-config-validator, dependabot.yml re-parsed, and pnpm run all re-run green after the changes.
 <!-- COMMENTS:END -->

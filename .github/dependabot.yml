@@ -18,6 +18,9 @@ updates:
 #
   - package-ecosystem: "npm"
     directory: "/"
+    # All npm manifests live on develop (main is a skeleton with no
+    # package.json), so extract deps from develop and open update PRs there.
+    target-branch: "develop"
     schedule:
       interval: "daily"
     cooldown:
