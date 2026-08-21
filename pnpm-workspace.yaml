@@ -1,2 +1,24 @@
 packages:
   - "packages/*"
+
+# Supply-chain install policy (mirrors the midnight-did precedent): newly
+# published package versions are quarantined until they have aged past the
+# minimum release age, so a freshly published compromised release cannot enter
+# this repository through `pnpm install`. All pnpm ages are in minutes
+# (10080 minutes = 7 days).
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude: []
+trustPolicy: no-downgrade
+trustPolicyExclude: []
+
+# Exotic subdependencies (e.g. install scripts in transitive dependencies of
+# dependencies) are blocked outright.
+blockExoticSubdeps: true
+
+# Build-script policy is explicit: these are exactly the packages whose install
+# build scripts are intentionally not run (the ones pnpm 10 skips silently
+# today). Anything new arriving with a build script fails loudly instead of
+# being skipped silently.
+ignoredBuiltDependencies:
+  - esbuild
+  - unrs-resolver
