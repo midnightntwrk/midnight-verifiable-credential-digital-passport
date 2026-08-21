@@ -3,9 +3,9 @@
 > **Status: proposal.** This document is drafted from the actual package
 > source for review. Promoting any of this content into
 > [`SECURITY.md`](../../SECURITY.md) is a decision for
-> `@midnightntwrk/mn-security` (who own that file per
-> [CODEOWNERS](../../CODEOWNERS)); this repository change deliberately does not
-> edit `SECURITY.md`.
+> `@midnightntwrk/mn-security` (who co-own that file with
+> `@midnightntwrk/mn-sre` per [CODEOWNERS](../../CODEOWNERS)); this repository
+> change deliberately does not edit `SECURITY.md`.
 
 ## 1. System under discussion
 
@@ -49,7 +49,9 @@ circuit or a codec.
 *Boundary: `src/digital-passport-credential/claims.compact`.*
 
 The family commits five claims; **no claim value is carried in the clear** in
-the credential body (`NoPublicClaims` in
+the credential body (the core-defined `NoPublicClaims` type
+(`core-compact-staging/credentials/types.compact`), selected for this family
+by the `VC<NoPublicClaims, …>` instantiation in
 `src/digital-passport-credential.compact`):
 
 - `firstName` (padded to `Bytes<64>`), `lastName` (`Bytes<64>`) —
@@ -134,15 +136,21 @@ Instead of revealing `dateOfBirth`, the holder can prove
 `currentDay - dateOfBirthDays >= ageThresholdYears * 365` with the date of
 birth supplied as a **private witness** bound to the committed
 `dateOfBirthCommitment` (mismatched witnesses fail before the predicate is
-evaluated). The threshold is a `Uint<8>` and must be positive.
+evaluated). The threshold is a `Uint<8>`; positivity is asserted upstream of
+this circuit — `assertValidDigitalPassportPresentationRequest` requires a
+positive `requestedAgeThresholdYears` and
+`assertValidDigitalPassportPresentation` asserts `ageThresholdYears > 0` —
+while the predicate circuit itself evaluates only the bound witness and the
+threshold comparison.
 
 **Threats addressed**
 
 - *False age claim:* the witness must open the credential's actual date-of-birth
   commitment; a younger witness fails the binding assert, an older future
   witness fails `currentDay >= dateOfBirthDays`.
-- *Under-threshold acceptance:* strict inequality failure exits the circuit
-  (fail-closed asserts, verified by `src/test/age-predicate.test.ts`).
+- *Under-threshold acceptance:* the non-strict `>=` threshold assert exits the
+  circuit when unmet (fail-closed asserts, verified by
+  `src/test/age-predicate.test.ts`).
 
 **Trust boundary (explicit in code).** `currentDay` is **caller-supplied
 policy input** (`helpers.compact` marks it as a TRUST BOUNDARY). A malicious
@@ -202,9 +210,12 @@ integrator's protocol responsibility.
 
 *Boundary: explicit-DID binding assertions
 (`core-compact-staging/credentials/holder-bindings.compact`), issuance
-validation (`validation.compact`), fixtures/proofs (`proofs.compact`).*
+validation (`validation.compact`), proofs (`proofs.compact`).*
 
-The family pins `HolderBindingProfile.explicitDid` on every protocol message.
+The family pins `HolderBindingProfile.explicitDid` on every request and
+submission protocol message (issuance included); the presentation
+`ResultMessage` (`present.compact`) carries no holder-binding field — its
+validation covers only the protocol envelope and the response bit.
 Issuance requires an explicit holder binding, a set holder challenge, and a
 holder public key that must match between request and result; the issued
 credential's holder binding must match the request's
