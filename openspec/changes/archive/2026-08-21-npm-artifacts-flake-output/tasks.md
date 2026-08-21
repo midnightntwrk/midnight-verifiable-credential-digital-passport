@@ -8,7 +8,7 @@
 
 - [x] 2.1 Add eval-time auto-discovery in `flake.nix`: read `packages/*/package.json`, select non-private ones, exposing name/version/workspace-relative path
 - [x] 2.2 Add the fixed-output dependency fetch derivation: `pnpm fetch` against `pnpm-lock.yaml` with corepack-provisioned pnpm@10.34.1 and nodejs_24, producing an offline store (record its output hash once fixed)
-- [x] 2.3 Add `nix/npm-tarball.nix` (or inline in `flake.nix`): `stdenv.mkDerivation` per discovered package taking the filtered source (root manifests + `packages/<name>`, excluding `dist`, `node_modules`, `src/managed`, `coverage`, `reports`), the offline store, `compact-toolchain`, and `midnight-circuit-params`; seeds `$HOME/.cache/midnight/zk-params` by deref-copying the linkFarm contents, sets `COMPACT_DIRECTORY`, runs offline frozen install, then `pnpm pack --pack-destination $out` (real `prepack` pipeline)
+- [x] 2.3 Add `nix/npm-tarball.nix` (or inline in `flake.nix`): `stdenv.mkDerivation` per discovered package taking the filtered source (root manifests + `packages/<name>`, excluding `dist`, `node_modules`, `src/managed`, `coverage`, `reports`), the offline store, `compact-toolchain`, and `midnight-circuit-params`; sets `COMPACT_DIRECTORY` and serves the circuit params via `MIDNIGHT_PP` pointing at the linkFarm (supersedes the originally planned `$HOME/.cache/midnight/zk-params` deref-copy seeding — see D3), runs offline frozen install, then `pnpm pack --pack-destination $out` (real `prepack` pipeline)
 - [x] 2.4 Expose `perSystem.packages.npm-artifacts` as a linkFarm over the per-package tarball derivations, and alias it as `perSystem.packages.default`, for both systems
 
 ## 3. Content check
