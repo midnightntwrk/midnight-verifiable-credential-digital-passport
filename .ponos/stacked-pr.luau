@@ -34,7 +34,7 @@
 -- Configuration
 -- ---------------------------------------------------------------------------
 
-local PR_ORDER: { number } = { 12, 14, 13 } -- bottom of the stack first
+local PR_ORDER: { number } = { 14, 13 } -- bottom of the stack first
 local BASE_BRANCH = "develop"
 
 local TURN_TIMEOUT_MS: number = 60 * 60 * 1000 -- 60 min per agent turn
