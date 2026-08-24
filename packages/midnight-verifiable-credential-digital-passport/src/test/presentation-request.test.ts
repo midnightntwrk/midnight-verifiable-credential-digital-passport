@@ -96,6 +96,21 @@ describe('digital-passport presentation request', () => {
     ).not.toThrow();
   });
 
+  it('rejects a presentation request whose schema minor version differs from the family schema', () => {
+    const fixture = createDigitalPassportFixture();
+    const invalidRequest = {
+      ...fixture.presentationRequest,
+      schema: {
+        ...fixture.presentationRequest.schema,
+        minorVersion: 2n,
+      },
+    };
+
+    expect(() =>
+      pureCircuits.assertValidDigitalPassportPresentationRequest(invalidRequest),
+    ).toThrow(/Digital-passport minor version mismatch/);
+  });
+
   it('enforces a verifier-defined presentation request against a valid presentation', () => {
     const fixture = createDigitalPassportFixture();
 
