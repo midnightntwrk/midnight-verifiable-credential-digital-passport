@@ -24,7 +24,7 @@
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": ["src/managed/**"]
     },
     "build": {
       "dependsOn": ["^build"],
