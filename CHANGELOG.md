@@ -39,3 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   build script). compactc 0.31.1 natively targets `compact-runtime` 0.16.0 and
   emits the matching `checkRuntimeVersion` guard, so the generated managed
   code no longer needs any post-build rewriting.
+
+### Fixed
+
+- Correctness bugs in the digital-passport Compact circuits found by review:
+  the derived presentation request now pins its own format version instead of
+  copying the transport-envelope version; schema-reference validation now pins
+  the family `minorVersion` (1.0) alongside the major version; and the
+  age-over-threshold predicate now counts full calendar years (proleptic
+  Gregorian, leap-day aware) instead of `threshold * 365` days, which let
+  proofs pass up to ~16 days early.
+- `turbo.json` declares `src/managed/**` as an output of the `typecheck` task:
+  the task regenerates the managed contract code, so a cache hit after a
+  `clean` restores it instead of reporting success with the generated code
+  missing.

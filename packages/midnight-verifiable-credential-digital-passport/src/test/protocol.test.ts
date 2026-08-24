@@ -32,6 +32,22 @@ describe('digital-passport credential: protocol layer', () => {
     expect(request).toEqual(fixture.presentationRequest);
   });
 
+  it('pins the presentation-request format version independently of the transport envelope version', () => {
+    const fixture = createDigitalPassportProtocolFixture();
+    const futureTransportRequest = {
+      ...fixture.verificationRequest,
+      envelope: {
+        ...fixture.verificationRequest.envelope,
+        version: 2n,
+      },
+    };
+
+    const request =
+      pureCircuits.digitalPassportPresentationRequestFromProtocol(futureTransportRequest);
+
+    expect(request.version).toBe(1n);
+  });
+
   it('accepts a concrete issuance flow aligned to the generic protocol thread model', () => {
     const fixture = createDigitalPassportProtocolFixture();
 

@@ -176,6 +176,7 @@ export const signProof = ({
 
 type FixtureOptions = {
   readonly hasDocumentNumber?: boolean;
+  readonly dateOfBirthDays?: bigint;
 };
 
 const buildDigitalPassportFixture = (
@@ -188,7 +189,7 @@ const buildDigitalPassportFixture = (
   const claimValues = {
     firstNameValuePadded: padText('Alice', 64),
     lastNameValuePadded: padText('Example', 64),
-    dateOfBirthDays: 3650n,
+    dateOfBirthDays: options.dateOfBirthDays ?? 3650n,
     documentNumberValue: hasDocumentNumber ? padText('AB1234567', 32) : new Uint8Array(32),
     issuingStateValue: padText('US', 32),
   };
@@ -336,6 +337,16 @@ export const createDigitalPassportFixtureWithoutDocumentNumber = (): DigitalPass
     createSigner('holder', 987654321n),
     sha256('challenge:verifier'),
     { hasDocumentNumber: false },
+  );
+
+export const createDigitalPassportFixtureWithDateOfBirth = (
+  dateOfBirthDays: bigint,
+): DigitalPassportFixture =>
+  buildDigitalPassportFixture(
+    createSigner('issuer', 123456789n),
+    createSigner('holder', 987654321n),
+    sha256('challenge:verifier'),
+    { dateOfBirthDays },
   );
 
 export const createDigitalPassportFixtureForParticipants = (

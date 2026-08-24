@@ -28,7 +28,7 @@ A separate fixed-output derivation runs `pnpm fetch` on the lockfile producing a
 
 ### D3 — Circuit params and toolchain wiring inside the build
 
-The build sets `COMPACT_DIRECTORY = ${compact-toolchain}` and seeds a writable `$HOME/.cache/midnight/zk-params` by copying `${midnight-circuit-params}/*` (deref-copy, since the input is a linkFarm of store symlinks) before running `prepack`. This mirrors exactly what the dev shell shellHook does today, so there is one known-good invocation pattern across shell and derivation. Alternative: `MIDNIGHT_PARAM_SOURCE` env pointing at the store — rejected: it is an upstream escape hatch for nonstandard mirrors and less battle-tested here than the cache-seeding path this repo already uses.
+The build sets `COMPACT_DIRECTORY = ${compact-toolchain}` and `MIDNIGHT_PP = ${midnight-circuit-params}`, pointing at the flake input's linkFarm directly; the params provider resolves `MIDNIGHT_PP` before `~/.cache/midnight/zk-params`, so neither the dev shell nor the build sandbox seeds `$HOME` at all — one known-good, read-only invocation pattern across shell and derivation. Alternative (original plan): seed a writable `$HOME/.cache/midnight/zk-params` by deref-copying the linkFarm contents — superseded during implementation: it worked, but polluted `$HOME` and duplicated the ~200 MB params per build environment. (`MIDNIGHT_PARAM_SOURCE` was also passed over: `MIDNIGHT_PP` is the provider's first-resolution path and needs no cache seeding.)
 
 ### D4 — Source filtering: workspace root + `packages/*`, minus gitignored artifacts
 
