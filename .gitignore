@@ -67,6 +67,10 @@ core-compact-staging/
 .pi/*
 !.pi/settings.json
 
+# Ponos scripts (keep the type definition tracked)
+.ponos/*.luau
+!.ponos/ponos.d.luau
+
 # Nix build outputs
 result
 result-*
