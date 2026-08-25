@@ -102,23 +102,28 @@ requires the holder's presentation signature (§3, §6).
 validation (`helpers.compact`), core VP envelope
 (`core-compact-staging/credentials/vp.compact`).*
 
-A presentation (`DigitalPassportPresentation`) carries, per claim, an
-independent `reveal*` flag with the value and its opening. Validation
-(`assertValidDigitalPassportPresentation`) re-derives each *revealed*
-commitment and requires it to equal the credential's — a disclosure that does
-not match the credential fails. Unrevealed claims contribute nothing beyond
-their already-public commitments.
+A presentation (`DigitalPassportPresentation`) carries, for each of the four
+revealing claims (`firstName`, `lastName`, `documentNumber`,
+`issuingState`), an independent `reveal*` flag with the value and its
+opening. Validation (`assertValidDigitalPassportPresentation`) re-derives
+each *revealed* commitment and requires it to equal the credential's — a
+disclosure that does not match the credential fails. Unrevealed claims
+contribute nothing beyond their already-public commitments. `dateOfBirth`
+is architecturally distinct: it has no `reveal*` flag or value/opening
+fields in the disclosure struct at all and is never disclosed in the clear
+— it is proven only through the age-over-threshold predicate's separate
+witness inputs, with their own trust boundary (§4).
 
 What a presentation **always** exposes (by design, covered by the holder's
 presentation signature): the schema reference, issuer verification-method
-reference, explicit holder binding, and the presentation's own digests. The
-disclosure struct carries each claim's value and opening fields
-unconditionally, next to the `reveal*` flag, and only flagged fields are
-checked against the credential's commitments. The circuits never inspect
-the unflagged fields, so "no claim value or opening leaves the holder
-unrevealed" is a holder-side construction convention (the constructing
-wallet zeroes unrevealed fields), not a property the validation code
-enforces.
+reference, explicit holder binding, and the presentation's own digests. For
+the four revealing claims, the disclosure struct carries each claim's value
+and opening fields unconditionally, next to the `reveal*` flag, and only
+flagged fields are checked against the credential's commitments. The
+circuits never inspect the unflagged fields, so "no claim value or opening
+leaves the holder unrevealed" is a holder-side construction convention
+(the constructing wallet zeroes unrevealed fields), not a property the
+validation code enforces.
 
 **Threats addressed**
 
