@@ -131,16 +131,40 @@ const cleanProject = () => {
   return isolated;
 };
 
-const readTarballManifest = (tarball) =>
-  JSON.parse(
-    spawnSync("tar", ["-xzOf", tarball, "package/package.json"], { encoding: "utf8" })
-      .stdout || "{}",
-  );
+/** Reads `package/package.json` out of a packed tarball, failing closed. */
+export const readTarballManifest = (tarball) => {
+  const result = spawnSync("tar", ["-xzOf", tarball, "package/package.json"], { encoding: "utf8" });
+  if (result.status !== 0 || !result.stdout?.trim()) {
+    throw new Error(
+      `cannot read package/package.json from ${path.basename(tarball)}: ${
+        (result.stderr ?? "").trim() || `tar exited with status ${result.status} and no output`
+      }`,
+    );
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(`package/package.json in ${path.basename(tarball)} is not valid JSON (${error.message})`);
+  }
+};
+
+const publishableNames = new Set(publishableWorkspaces().map((workspace) => workspace.name));
 
 const testTarball = async (tarball) => {
   const isolated = cleanProject();
   console.log(`tarball consumer: clean project at ${isolated} for ${path.basename(tarball)}`);
   try {
+    // Read the manifest first and fail closed: a tarball whose manifest
+    // cannot be read (corrupt archive, missing package/package.json, invalid
+    // JSON) must abort the consumer test — it may never be downgraded to an
+    // install-only check that still prints PASS.
+    const manifest = readTarballManifest(tarball);
+    if (typeof manifest.name !== "string" || !publishableNames.has(manifest.name)) {
+      throw new Error(
+        `${path.basename(tarball)} does not carry a cataloged publishable workspace ` +
+          `(manifest name: ${manifest.name ?? "<missing>"})`,
+      );
+    }
     // Copy the tarball into the clean project and add it by a short relative
     // path (mirroring the smoke lane): pnpm derives its store filename from
     // the tarball's full path, so installing from a long artifacts directory
@@ -152,11 +176,10 @@ const testTarball = async (tarball) => {
     // smoke workspace; install it alongside the tarball so the isolated
     // project mirrors the smoke lane's resolution.
     run("pnpm", ["add", `./${tarballName}`, NETWORK_ID], { cwd: isolated });
-    const manifest = readTarballManifest(tarball);
     if (manifest.name === FAMILY) {
       consumerRoundTrip(isolated, { label: "tarball consumer" });
     } else {
-      console.log(`tarball consumer: install-only check for ${manifest.name ?? "unknown package"}`);
+      console.log(`tarball consumer: install-only check for ${manifest.name}`);
     }
     console.log(`tarball consumer: PASS for ${path.basename(tarball)}`);
   } finally {

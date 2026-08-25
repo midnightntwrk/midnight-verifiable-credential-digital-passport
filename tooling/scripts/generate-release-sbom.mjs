@@ -80,16 +80,20 @@ export const sbomForTarball = (tarball, workDir) => {
   const tarballSha = sha256(tarball);
   const verificationCode = packageVerificationCode(packageRoot);
   const fileCount = walk(packageRoot).length;
-  const nameForUrl = manifest.name.startsWith("@")
+  // The purl spec form for a scoped npm package is `pkg:npm/%40scope/name@ver`
+  // (the `@` percent-encoded, the scope separator kept literal), while the
+  // documentNamespace needs only a URI-safe unique path segment.
+  const namespaceName = manifest.name.startsWith("@")
     ? `${manifest.name.slice(1).replace("/", "%2F")}`
     : manifest.name;
+  const purlName = manifest.name.replace(/^@/u, "%40");
 
   return {
     spdxVersion: "SPDX-2.3",
     dataLicense: "CC0-1.0",
     SPDXID: "SPDXRef-DOCUMENT",
     name: `sbom-${manifest.name.replace(/^@/u, "").replace(/\//gu, "-")}-${manifest.version}`,
-    documentNamespace: `https://midnightntwrk.github.io/midnight-verifiable-credential-digital-passport/spdx/releases/${nameForUrl}/${manifest.version}/${tarballSha.slice(0, 16)}`,
+    documentNamespace: `https://midnightntwrk.github.io/midnight-verifiable-credential-digital-passport/spdx/releases/${namespaceName}/${manifest.version}/${tarballSha.slice(0, 16)}`,
     creationInfo: {
       created: new Date().toISOString(),
       creators: ["Tool: generate-release-sbom.mjs", "Organization: Midnight Foundation"],
@@ -115,7 +119,7 @@ export const sbomForTarball = (tarball, workDir) => {
           {
             referenceCategory: "PACKAGE-MANAGER",
             referenceType: "purl",
-            referenceLocator: `pkg:npm/${nameForUrl}@${manifest.version}`,
+            referenceLocator: `pkg:npm/${purlName}@${manifest.version}`,
           },
         ],
         annotations: [],

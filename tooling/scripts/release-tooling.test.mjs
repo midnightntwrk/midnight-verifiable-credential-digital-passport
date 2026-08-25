@@ -48,7 +48,7 @@ import {
 } from "./prepare-release-version.mjs";
 import { contractViolations } from "./check-release-package-contract.mjs";
 import { catalogViolations, workspaceCatalog } from "./workspace-catalog.mjs";
-import { parseConsumerArgs } from "./test-release-package-consumers.mjs";
+import { parseConsumerArgs, readTarballManifest } from "./test-release-package-consumers.mjs";
 import { packageVerificationCode } from "./generate-release-sbom.mjs";
 import { assertPublishWorkflow } from "./check-security-workflows.mjs";
 import { parse as parseYaml } from "yaml";
@@ -810,6 +810,46 @@ test("test-release-package-consumers: tarball installs use a short relative path
   assert.doesNotMatch(source, /"add", tarball,/u);
 });
 
+test("test-release-package-consumers: unreadable tarball manifests fail closed", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "consumer-manifest-"));
+  try {
+    // Not a tarball at all.
+    const garbage = path.join(work, "garbage.tgz");
+    writeFileSync(garbage, "this is not a tarball\n");
+    assert.throws(() => readTarballManifest(garbage), /cannot read package\/package\.json/u);
+
+    // A structurally valid tarball that does not carry package/package.json.
+    const stripped = makeFixtureTarball(work, {
+      mutate: (pkg) => {
+        rmSync(path.join(pkg, "package.json"));
+      },
+    });
+    assert.throws(() => readTarballManifest(stripped), /cannot read package\/package\.json/u);
+
+    // A manifest that is present but not valid JSON.
+    const malformed = makeFixtureTarball(work, {
+      mutate: (pkg) => {
+        writeFileSync(path.join(pkg, "package.json"), "{not json");
+      },
+    });
+    assert.throws(() => readTarballManifest(malformed), /is not valid JSON/u);
+
+    // The happy path still round-trips through the family manifest.
+    assert.equal(readTarballManifest(makeFixtureTarball(work)).name, FAMILY);
+
+    // The tarball mode routes every tarball through the publishable catalog
+    // before it may print PASS — an unknown manifest name must fail closed
+    // instead of silently downgrading to an install-only check.
+    const source = readFileSync(
+      path.join(SCRIPTS, "test-release-package-consumers.mjs"),
+      "utf8",
+    );
+    assert.match(source, /publishableNames\.has\(manifest\.name\)/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // SBOM generation
 // ---------------------------------------------------------------------------
@@ -833,7 +873,13 @@ test("generate-release-sbom: emits a dependency-free SPDX document per tarball",
     assert.equal(document.packages[0].versionInfo, "2.3.4");
     assert.equal(document.packages[0].filesAnalyzed, true);
     assert.match(document.packages[0].packageVerificationCode.packageVerificationCodeValue, /^[0-9a-f]{40}$/u);
-    assert.match(document.packages[0].externalRefs[0].referenceLocator, /^pkg:npm\//u);
+    // The purl must be spec-compliant for scoped packages: `@` percent-encoded,
+    // the scope separator kept literal — `pkg:npm/%40fixture/sbom-pkg@2.3.4`,
+    // never `pkg:npm/fixture%2Fsbom-pkg@2.3.4`.
+    assert.equal(
+      document.packages[0].externalRefs[0].referenceLocator,
+      "pkg:npm/%40fixture/sbom-pkg@2.3.4",
+    );
 
     // The checksum matches the tarball bytes.
     const expectedSha = createHash("sha256").update(readFileSync(tarball)).digest("hex");
@@ -986,6 +1032,58 @@ test("publish workflow guard: mutated workflows fail (push trigger, widened perm
       violation.includes("snapshot|rc|release"),
     ),
   );
+});
+
+test("publish workflow guard: the npm trusted-publishing gate enforces the full >= 11.5.1 semver", () => {
+  const workflow = parseYaml(
+    readFileSync(path.join(REPO_ROOT, ".github/workflows/publish.yml"), "utf8"),
+  );
+  const gateSteps = Object.values(workflow.jobs ?? {})
+    .flatMap((job) => job.steps ?? [])
+    .filter((step) => typeof step.run === "string" && step.run.includes("trusted-publishing support"));
+  assert.equal(gateSteps.length, 1, "the publish workflow must carry exactly one npm CLI gate");
+
+  // Execute the exact embedded gate script against stubbed `npm --version`
+  // output, so the comparison logic itself is under test (a two-component
+  // comparison would accept 11.5.0, which predates trusted publishing).
+  const script = /node -e '([^']*)'/u.exec(gateSteps[0].run)?.[1];
+  assert.ok(script, "the gate must be a node -e script");
+  const work = mkdtempSync(path.join(tmpdir(), "npm-gate-"));
+  try {
+    const scriptFile = path.join(work, "gate.cjs");
+    writeFileSync(scriptFile, `${script}\n`);
+    // The preload stubs child_process.execSync so the gate reads the fake
+    // version instead of the runner's real npm.
+    const preload = path.join(work, "stub-npm-version.cjs");
+    writeFileSync(
+      preload,
+      [
+        "const { execSync } = require('node:child_process');",
+        "require('node:child_process').execSync = (command, options) =>",
+        "  process.env.FAKE_NPM_VERSION",
+        "    ? `${process.env.FAKE_NPM_VERSION}\n`",
+        "    : execSync(command, options);",
+      ].join("\n"),
+    );
+
+    const gate = (version) =>
+      node(["--require", preload, scriptFile], {
+        env: { ...process.env, FAKE_NPM_VERSION: version },
+      });
+
+    for (const tooOld of ["10.9.0", "11.4.9", "11.5.0"]) {
+      const result = gate(tooOld);
+      assert.notEqual(result.status, 0, `npm ${tooOld} must be rejected`);
+      assert.match(result.stderr, /predates trusted-publishing support \(needs >= 11\.5\.1\)/u);
+    }
+    for (const supported of ["11.5.1", "11.5.2", "11.6.0", "12.0.0"]) {
+      const result = gate(supported);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /supports trusted publishing/u);
+    }
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -92,7 +92,7 @@ jobs:
       - name: Check the npm CLI supports trusted publishing (OIDC path)
         run: |
           npm --version
-          node -e 'const [major, minor] = require("child_process").execSync("npm --version").toString().trim().split(".").map(Number); if (major < 11 || (major === 11 && minor < 5)) { throw new Error("npm " + major + "." + minor + " predates trusted-publishing support (needs >= 11.5.1)"); } console.log("npm CLI supports trusted publishing");'
+          node -e 'const v = require("child_process").execSync("npm --version").toString().trim(); const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v); const p = m ? m.slice(1).map(Number) : [0, 0, 0]; const tooOld = p[0] < 11 || (p[0] === 11 && p[1] < 5) || (p[0] === 11 && p[1] === 5 && p[2] < 1); if (!m || tooOld) { throw new Error("npm " + v + " predates trusted-publishing support (needs >= 11.5.1)"); } console.log("npm CLI " + v + " supports trusted publishing");'
 
       - name: Run the repository gate (security checks, lint, typecheck, build, tests, release tooling)
         run: pnpm run all
