@@ -19,9 +19,12 @@ Compact `pure circuit`s plus off-chain compact-value codecs.
 
 Runtime dependencies: `@midnight-ntwrk/credential-compact` (the generic
 VC/VP/protocol core, staged into `core-compact-staging/` at build time) and
-`@midnight-ntwrk/compact-runtime`. The package contains no network code, no
-key storage, and no ledger views; everything it exports is either a pure
-circuit or a codec.
+`@midnight-ntwrk/compact-runtime`. The package contains no network code and
+no key storage. Everything the family layer defines is either a pure circuit
+or a codec; the public root additionally re-exports the compiler-generated
+contract module (`src/contract.ts`) — the `Contract` deployment wrapper, an
+(empty) `Ledger`/`ledger()` surface, and the shared `pureCircuits` — for
+composing the family into deployed contracts.
 
 ### Assets
 
@@ -85,8 +88,8 @@ signature via the credential body root.
 **Residual risks.** First/last names padded to 64 bytes have low entropy; a
 verifier that learns a name once can confirm it later by re-deriving the
 commitment (openings protect against *derivation*, not *confirmation*
-attacks). This is inherent to plain commitments and is why disclosure requires
-the holder's presentation signature (§6).
+attacks). This is inherent to plain commitments and is why disclosure
+requires the holder's presentation signature (§3, §6).
 
 ## 3. Selective-disclosure boundaries
 
@@ -103,8 +106,14 @@ their already-public commitments.
 
 What a presentation **always** exposes (by design, covered by the holder's
 presentation signature): the schema reference, issuer verification-method
-reference, explicit holder binding, and the presentation's own digests. What
-it **never** exposes without a flag: any claim value or opening.
+reference, explicit holder binding, and the presentation's own digests. The
+disclosure struct carries each claim's value and opening fields
+unconditionally, next to the `reveal*` flag, and only flagged fields are
+checked against the credential's commitments. The circuits never inspect
+the unflagged fields, so "no claim value or opening leaves the holder
+unrevealed" is a holder-side construction convention (the constructing
+wallet zeroes unrevealed fields), not a property the validation code
+enforces.
 
 **Threats addressed**
 
@@ -139,8 +148,9 @@ witnesses fail before the predicate is evaluated). Both `currentDay` and the
 witness `dateOfBirthDays` are decomposed into civil dates — each
 decomposition is rejected unless it exactly reconstructs its day number — and
 the circuit asserts `currentDay >= dateOfBirthDays` and that the full
-calendar years elapsed, counted leap-day aware (the age increments exactly on
-the birth month/day each year), are at least `ageThresholdYears`
+calendar years elapsed, counted leap-day aware (the age increments on the
+birth month/day each year; a holder born on February 29 reaches each
+threshold on March 1 of non-leap years), are at least `ageThresholdYears`
 (`ageInYears = currentDate.year - dateOfBirthDate.year -
 (beforeBirthdayThisYear ? 1 : 0)`; `src/test/age-predicate.test.ts`
 explicitly rejects proofs that merely satisfy a flat
@@ -162,12 +172,19 @@ evaluates only the bound witness and the threshold comparison.
   `src/test/age-predicate.test.ts`).
 
 **Trust boundary (explicit in code).** `currentDay` is **caller-supplied
-policy input** (`helpers.compact` marks it as a TRUST BOUNDARY). A malicious
-or sloppy integrator that derives "today" from an untrusted source accepts
-predicates against a forged clock. Acceptance decisions must feed this
-argument from a trustworthy time source.
+policy input** (`helpers.compact` marks it as a TRUST BOUNDARY), and because
+Compact has no integer division the caller supplies the calendar
+decompositions (`currentDate`, `dateOfBirthDate`) as well. The circuit only
+rejects a decomposition that does not reconstruct its day number, so a
+forged clock is accepted as long as the day number and its decomposition
+are forged consistently. A malicious or sloppy integrator that derives
+"today" from an untrusted source accepts predicates against a forged clock;
+the code comment requires sourcing it from "a trustworthy time/calendar
+oracle" when the predicate is used for real acceptance decisions.
 
-**Residual risks.** No timezone semantics are defined; `dateOfBirthDays` and
+**Residual risks.** Day numbers follow the proleptic Gregorian calendar
+with day 0 = 1970-01-01 (Unix epoch days, per the `helpers.compact`
+comment). No timezone semantics are defined; `dateOfBirthDays` and
 `currentDay` must come from the same day-numbering convention.
 
 ## 5. Presentation-request validation
@@ -219,10 +236,13 @@ integrator's protocol responsibility.
 (`core-compact-staging/credentials/holder-bindings.compact`), issuance
 validation (`validation.compact`), proofs (`proofs.compact`).*
 
-The family pins `HolderBindingProfile.explicitDid` on every request and
-submission protocol message (issuance included); the presentation
-`ResultMessage` (`present.compact`) carries no holder-binding field — its
-validation covers only the protocol envelope and the response bit.
+The family pins `HolderBindingProfile.explicitDid` on every protocol
+message that carries a holder-binding profile field — the issuance offer,
+request, and result, and the presentation request and submission
+(`validation.compact`). The presentation `ResultMessage` (`present.compact`)
+carries no holder-binding field; the family's result validation covers the
+protocol envelope and requires a credential root whenever the result is
+approved.
 Issuance requires an explicit holder binding, a set holder challenge, and a
 holder public key that must match between request and result; the issued
 credential's holder binding must match the request's
@@ -270,8 +290,9 @@ out-of-band.
 runtime stack (`@midnight-ntwrk/compact-runtime`, `credential-compact`),
 fixtures (`src/testing/credential-fixtures.ts`).*
 
-Everything in this package is a **pure circuit**: deterministic functions of
-their inputs, no ledger state. Executing them via the exported
+Everything the family defines is a **pure circuit**: deterministic functions
+of their inputs, no ledger state (the generated `Ledger` type is empty).
+Executing them via the exported
 `pureCircuits` is a local, in-process evaluation — the package makes no
 network calls and ships no proof server; tests and the consumer smoke
 round-trip run entirely offline under the `undeployed` network id.
@@ -289,23 +310,22 @@ properties:
 - **Assertion integrity.** The validation circuits are fail-closed `assert`s;
   accepting their result means trusting the execution environment (local
   runtime, or a valid ZK proof when deployed). The package does not, and
-  cannot, attest *which* environment ran it.
+  cannot, attest *which* environment ran it: a malicious execution host can
+  lie about a circuit's outcome (return without throwing).
 - **Signature vs proof.** Credential/presentation authenticity inside this
   package is carried by Jubjub signatures in cleartext fields (`Proof`), not
   by ZK; the ZK properties matter only for the predicate (§4) and for future
   deployed usage.
 
-**Residual risks.** A malicious execution host can lie about a circuit's
-outcome (return without throwing). Deployment integrations must rely on the
-Midnight network's proof verification, not on an attestation from the
-prover host.
+**Residual risks.** Deployment integrations must rely on the Midnight
+network's proof verification, not on an attestation from the prover host.
 
 ## 9. Assumption register (summary)
 
 | # | Assumption | Boundary | Violation consequence |
 |---|---|---|---|
 | A1 | Openings stay holder-private | `claims.compact` commitments | Full claim disclosure |
-| A2 | `currentDay` from a trusted clock | `assertValidDigitalPassportAgePredicate` | Age predicate accepted against forged time |
+| A2 | `currentDay` (and its calendar decomposition) from a trusted clock | `assertValidDigitalPassportAgePredicate` | Age predicate accepted against forged time |
 | A3 | Verifier authentication happens in transport | request-satisfaction helper comment | Request spoofing / challenge phishing |
 | A4 | No revocation is acceptable for v1 | `NoStatusBinding` | Revoked credentials verify as valid |
 | A5 | Expiration checked by the caller against trusted time | core envelope validator | Expired credentials accepted |
