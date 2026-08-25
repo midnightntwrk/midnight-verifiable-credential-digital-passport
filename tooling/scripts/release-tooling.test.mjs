@@ -759,6 +759,19 @@ test("test-release-package-consumers: registry-mode argument validation", () => 
   assert.deepEqual(parseConsumerArgs([]).mode, "tarball");
 });
 
+test("test-release-package-consumers: tarball installs use a short relative path (ENAMETOOLONG guard)", () => {
+  const source = readFileSync(
+    path.join(SCRIPTS, "test-release-package-consumers.mjs"),
+    "utf8",
+  );
+  // The tarball must be copied into the isolated project and installed by
+  // relative path: pnpm derives store filenames from the full tarball path,
+  // and CI's long artifacts directory overflows the filename limit.
+  assert.match(source, /cpSync\(tarball, path\.join\(isolated, tarballName\)\)/u);
+  assert.match(source, /"add", `\.\/\$\{tarballName\}`/u);
+  assert.doesNotMatch(source, /"add", tarball,/u);
+});
+
 // ---------------------------------------------------------------------------
 // SBOM generation
 // ---------------------------------------------------------------------------

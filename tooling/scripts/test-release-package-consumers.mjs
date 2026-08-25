@@ -141,10 +141,17 @@ const testTarball = async (tarball) => {
   const isolated = cleanProject();
   console.log(`tarball consumer: clean project at ${isolated} for ${path.basename(tarball)}`);
   try {
+    // Copy the tarball into the clean project and add it by a short relative
+    // path (mirroring the smoke lane): pnpm derives its store filename from
+    // the tarball's full path, so installing from a long artifacts directory
+    // (e.g. /home/runner/work/<repo>/<repo>/tooling/artifacts/npm/...) overflows
+    // the 255-byte filename limit with ERR_PNPM_ENAMETOOLONG.
+    const tarballName = path.basename(tarball);
+    cpSync(tarball, path.join(isolated, tarballName));
     // The network-id helper the round-trip uses is a devDependency of the
     // smoke workspace; install it alongside the tarball so the isolated
     // project mirrors the smoke lane's resolution.
-    run("pnpm", ["add", tarball, NETWORK_ID], { cwd: isolated });
+    run("pnpm", ["add", `./${tarballName}`, NETWORK_ID], { cwd: isolated });
     const manifest = readTarballManifest(tarball);
     if (manifest.name === FAMILY) {
       consumerRoundTrip(isolated, { label: "tarball consumer" });
