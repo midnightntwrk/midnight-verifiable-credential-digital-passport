@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     activates the installed Renovate app via the org preset
     (`local>midnightntwrk/renovate-config`).
   - **Fail-closed scan lane**: the Scan workflow pins
-    `midnightntwrk/upload-sarif-github-action` to `9da05ae`, fails on
+    `midnightntwrk/upload-sarif-github-action` to `e90808c`, fails on
     high-severity findings, skips the duplicated Scorecard pass, disables
     checkout credential persistence, and runs on `ubuntu-24.04`.
   - **Self-guarding workflows**: two CI-enforced checks

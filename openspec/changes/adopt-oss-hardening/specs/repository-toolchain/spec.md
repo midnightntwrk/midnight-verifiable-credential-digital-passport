@@ -47,7 +47,7 @@ The repository's package installation SHALL enforce a release-age floor for regi
 
 ### Requirement: Dependency update automation
 
-The repository SHALL carry automated dependency update lanes for both the npm and github-actions ecosystems, active on the default branch, each applying a release-age cooldown before proposing a newly published version. The repository SHALL additionally declare a Renovate configuration extending the organization's shared preset so grouped Midnight-stack updates follow org-wide policy.
+The repository SHALL carry automated dependency update lanes for both the npm and github-actions ecosystems, active on the default branch, each applying a release-age cooldown before proposing a newly published version. The repository SHALL additionally declare a Renovate configuration extending the organization's shared preset so grouped Midnight-stack updates follow org-wide policy. Where the repository integrates on a branch other than the default branch, these update-lane and Renovate configurations SHALL be complete on the integration branch so both bots adopt them at default-branch promotion without further configuration changes.
 
 #### Scenario: Runtime dependency updates are proposed
 

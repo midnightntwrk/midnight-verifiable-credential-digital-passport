@@ -11,7 +11,7 @@ Delivered as three independently landable PR slices (config first, guarded workf
 - `pnpm-workspace.yaml`: add `blockExoticSubdeps: true`, `minimumReleaseAge: 10080`, `trustPolicy: no-downgrade` (midnight-did values), with `minimumReleaseAgeExclude`/`trustPolicyExclude` lists starting empty, plus explicit `ignoredBuiltDependencies` (initially `esbuild`, `unrs-resolver`) so the currently-silent build-script skipping becomes declared policy. Verified compatible with the current lockfile: clean `pnpm install --frozen-lockfile` under pnpm 10.34.1 with these settings enabled.
 - `.npmrc`: add `min-release-age=7`.
 - `renovate.json`: activate the installed-but-dormant Renovate app (the `renovate/configure` branch already exists on origin) extending `local>midnightntwrk/renovate-config`, main-only base branch.
-- `.github/dependabot.yml`: re-enable the `npm` ecosystem lane (daily, 7-day cooldown) alongside the existing `github-actions` lane — both bots active, sibling-style.
+- `.github/dependabot.yml`: re-enable the `npm` ecosystem lane (daily, 7-day cooldown) alongside the existing `github-actions` lane — both bots active, sibling-style (activation is staged until `develop` is promoted to the default branch, per design D6/D7).
 
 **Slice 2 — gating scan and self-guarding security workflows**
 
