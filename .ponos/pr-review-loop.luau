@@ -3,7 +3,7 @@
 const DEFAULT_MODEL = "qwencloud/qwen3.8-max"
 const JUDGE_MODEL = "qwencloud/deepseek-v4-flash-0731"
 
-const PR_URL = "https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/pull/20"
+const PR_URL = "https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/pull/26"
 const MAX_ITERATIONS = 15
 
 local predicateAgent = require("./predicate")
@@ -17,7 +17,7 @@ while iteration < MAX_ITERATIONS do
 	reviewer:setConfig("model", DEFAULT_MODEL)
 
 	reviewer:prompt(`Please ask Claude CLI to review the PR {PR_URL}.`)
-	local reviewVerdict = reviewer:prompt("Based on Claude's review feedback, determine the blocking issues and non-blocking issues.")
+	local reviewVerdict = reviewer:prompt("Based on Claude's review feedback, determine which issues are blocking and which ones are non-blocking.")
 	ponos.log("Review verdict: " .. reviewVerdict.text)
 
 	if
