@@ -133,7 +133,7 @@ jobs:
         run: bash tooling/scripts/publish-npm-packages.sh --npm-tag "${{ steps.version.outputs.npm-tag }}"
 
       - name: Wait for registry propagation
-        run: node tooling/scripts/wait-for-npm-packages.mjs --version "${{ steps.version.outputs.version }}" --registry "$NPM_REGISTRY"
+        run: node tooling/scripts/wait-for-npm-packages.mjs --version "${{ steps.version.outputs.version }}" --npm-tag "${{ steps.version.outputs.npm-tag }}" --registry "$NPM_REGISTRY"
 
       - name: Verify the npm dist-tags (fail closed on drift)
         run: |

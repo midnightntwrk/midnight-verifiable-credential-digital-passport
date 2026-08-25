@@ -19,7 +19,8 @@
 // public registry until every supported package's release version is visible.
 //
 // CLI:
-//   wait-for-npm-packages.mjs --version <v> [--timeout <seconds>] [--interval <seconds>]
+//   wait-for-npm-packages.mjs --version <v> --npm-tag <snapshot|rc|latest>
+//                                     [--timeout <seconds>] [--interval <seconds>]
 //                                     [--registry <url>] [--view-cmd <cmd>]
 
 import { spawnSync } from "node:child_process";
@@ -39,6 +40,7 @@ const SEMVER = /^\d+\.\d+\.\d+(-[\w.-]+)?$/u;
 const parseArgs = (argv) => {
   const options = {
     version: null,
+    npmTag: null,
     timeout: 300,
     interval: 10,
     registry: process.env.NPM_REGISTRY ?? NPM_PUBLIC_REGISTRY,
@@ -49,6 +51,9 @@ const parseArgs = (argv) => {
     switch (arg) {
       case "--version":
         options.version = argv[++index];
+        break;
+      case "--npm-tag":
+        options.npmTag = argv[++index];
         break;
       case "--timeout":
         options.timeout = Number(argv[++index]);
@@ -68,6 +73,9 @@ const parseArgs = (argv) => {
   }
   if (!options.version || !SEMVER.test(options.version)) {
     throw new Error("--version is required and must be a semantic version");
+  }
+  if (!options.npmTag) {
+    throw new Error("--npm-tag is required (snapshot | rc | latest)");
   }
   if (options.registry !== NPM_PUBLIC_REGISTRY) {
     throw new Error(
@@ -98,6 +106,25 @@ const versionVisible = (name, version, options) => {
   return result.status === 0 && result.stdout.trim() === JSON.stringify(version);
 };
 
+/** The release dist-tag must resolve to the published version as well: the
+ * subsequent dist-tag verification gates on it, so propagation of the tag is
+ * waited for here rather than failing the verify step on registry lag. */
+const distTagPointsAt = (name, version, npmTag, options) => {
+  const result = spawnSync(
+    splitCommand(options.viewCmd)[0],
+    [
+      ...splitCommand(options.viewCmd).slice(1),
+      name,
+      `dist-tags.${npmTag}`,
+      "--json",
+      "--registry",
+      options.registry,
+    ],
+    { encoding: "utf8" },
+  );
+  return result.status === 0 && result.stdout.trim() === JSON.stringify(version);
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const main = async () => {
@@ -113,8 +140,13 @@ const main = async () => {
   const pending = new Set(names);
   while (pending.size > 0) {
     for (const name of [...pending]) {
-      if (versionVisible(name, options.version, options)) {
-        console.log(`[wait-for-npm-packages] ${name}@${options.version} is visible on the registry`);
+      if (
+        versionVisible(name, options.version, options) &&
+        distTagPointsAt(name, options.version, options.npmTag, options)
+      ) {
+        console.log(
+          `[wait-for-npm-packages] ${name}@${options.version} is visible on the registry with dist-tag '${options.npmTag}'`,
+        );
         pending.delete(name);
       }
     }

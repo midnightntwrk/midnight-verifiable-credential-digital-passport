@@ -27,6 +27,7 @@ import { spawnSync } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -511,6 +512,132 @@ test("publish-script: no-op with dist-tag repair under a mocked registry view", 
   }
 });
 
+/**
+ * Builds an `npm` PATH shim for exercising the real publish path of
+ * publish-npm-packages.sh without touching the network: `publish` calls are
+ * recorded, `view` calls are served by a lagging mock whose version queries
+ * E404 for the first `versionLag` calls before resolving to `version`.
+ */
+const makeLaggingNpm = (dir, { version, versionLag }) => {
+  const binDir = path.join(dir, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const pollsFile = path.join(dir, "version-polls");
+  const publishLog = path.join(dir, "publish.log");
+  const tagsFile = path.join(dir, "tags.json");
+  writeFileSync(pollsFile, "0");
+  writeFileSync(publishLog, "");
+  writeFileSync(tagsFile, "{}");
+  const lagView = path.join(dir, "lag-view.mjs");
+  writeFileSync(
+    lagView,
+    `${[
+      "import { readFileSync, writeFileSync } from 'node:fs';",
+      "const args = process.argv.slice(2);",
+      "const target = args[0] ?? '';",
+      "const field = args.slice(1).find((a) => !a.startsWith('--') && !/^https?:/u.test(a)) ?? '';",
+      "const versionQuery = target.includes('@') && target.slice(target.lastIndexOf('@') + 1).includes('.');",
+      "if (field === 'version' || versionQuery) {",
+      "  const polls = Number(readFileSync(process.env.MOCK_POLLS_FILE, 'utf8')) + 1;",
+      "  writeFileSync(process.env.MOCK_POLLS_FILE, String(polls));",
+      `  if (polls <= ${versionLag}) { console.error('E404 Not Found'); process.exit(1); }`,
+      `  console.log(JSON.stringify(${JSON.stringify(version)}));`,
+      "} else if (field.startsWith('dist-tags')) {",
+      "  const tags = JSON.parse(readFileSync(process.env.MOCK_TAGS_FILE, 'utf8'));",
+      "  const key = field.split('.')[1];",
+      "  const value = tags[key];",
+      "  if (value === undefined) { console.error('E404 Not Found'); process.exit(1); }",
+      "  console.log(JSON.stringify(value));",
+      "} else { console.error('unsupported mock query: ' + field); process.exit(1); }",
+    ].join("\n")}\n`,
+  );
+  const shim = path.join(binDir, "npm");
+  writeFileSync(
+    shim,
+    `${[
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      'if [ "${1:-}" = "publish" ]; then',
+      "  printf '%s\\n' \"$*\" >> \"${MOCK_PUBLISH_LOG}\"",
+      "  exit 0",
+      'elif [ "${1:-}" = "view" ]; then',
+      '  exec node "${MOCK_LAG_VIEW}" "${@:2}"',
+      "else",
+      '  echo "unsupported npm subcommand: $*" >&2',
+      "  exit 1",
+      "fi",
+    ].join("\n")}\n`,
+  );
+  chmodSync(shim, 0o755);
+  return {
+    pollsFile,
+    publishLog,
+    env: (extra = {}) => ({
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH}`,
+      NODE_AUTH_TOKEN: "dummy",
+      MOCK_POLLS_FILE: pollsFile,
+      MOCK_PUBLISH_LOG: publishLog,
+      MOCK_LAG_VIEW: lagView,
+      MOCK_TAGS_FILE: tagsFile,
+      ...extra,
+    }),
+  };
+};
+
+test("publish-script: post-publish verification retries through registry propagation lag", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "publish-retry-"));
+  try {
+    makeFixtureTarball(work, { version: "9.9.9" });
+    // Version queries E404 for the first three polls: the pre-publish check
+    // (poll 1) takes the publish path, and post-publish verification must
+    // retry through polls 2–3 before the version becomes visible on poll 4.
+    const mock = makeLaggingNpm(work, { version: "9.9.9", versionLag: 3 });
+    const result = bash(
+      path.join(SCRIPTS, "publish-npm-packages.sh"),
+      ["--npm-tag", "rc", "--artifacts-dir", work],
+      {
+        env: mock.env({ NPM_VIEW_RETRIES: "4", NPM_VIEW_INTERVAL: "0" }),
+      },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /published and verified/u);
+    assert.match(result.stderr, /polling again/u);
+    assert.match(
+      readFileSync(mock.publishLog, "utf8"),
+      /--tag rc --provenance/u,
+      "the tarball must have been published exactly once",
+    );
+    assert.equal(readFileSync(mock.pollsFile, "utf8"), "4");
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("publish-script: post-publish verification fails closed only after the retry budget", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "publish-budget-"));
+  try {
+    makeFixtureTarball(work, { version: "9.9.9" });
+    // The version never becomes visible: verification must poll the full
+    // budget, then fail — while the publish itself did happen (the failure
+    // message must point at propagation, not at publication).
+    const mock = makeLaggingNpm(work, { version: "9.9.9", versionLag: Infinity });
+    const result = bash(
+      path.join(SCRIPTS, "publish-npm-packages.sh"),
+      ["--npm-tag", "rc", "--artifacts-dir", work],
+      {
+        env: mock.env({ NPM_VIEW_RETRIES: "3", NPM_VIEW_INTERVAL: "0" }),
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /post-publish verification failed/u);
+    assert.match(result.stderr, /did not become visible/u);
+    assert.match(readFileSync(mock.publishLog, "utf8"), /--tag rc --provenance/u);
+    assert.equal(readFileSync(mock.pollsFile, "utf8"), "4");
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Release package contract (sandboxed tarball fixtures)
 // ---------------------------------------------------------------------------
@@ -727,6 +854,21 @@ test("npm-release-state: first publication tolerates the registry auto-setting '
   }
 });
 
+test("npm-release-state: --protect-latest without --version fails closed", () => {
+  // The first-publication tolerance compares against the published version;
+  // without --version the check would silently no-op, so the CLI contract
+  // must reject the pairing instead (parseArgs runs before any file access).
+  const result = node([
+    path.join(SCRIPTS, "npm-release-state.mjs"),
+    "--verify",
+    "--snapshot-file",
+    path.join(tmpdir(), "nonexistent-state.json"),
+    "--protect-latest",
+  ]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--protect-latest requires --version/u);
+});
+
 test("npm-release-state: non-E404 registry errors still fail closed", () => {
   const work = mkdtempSync(path.join(tmpdir(), "release-state-broken-"));
   try {
@@ -752,16 +894,26 @@ test("wait-for-npm-packages: resolves via a mocked view and times out on absence
   try {
     const mockView = MOCK_VIEW(work);
     const visible = node(
-      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--view-cmd", `node ${mockView}`],
-      { env: { ...process.env, MOCK_VIEW_VERSION: "0.1.0-rc1" } },
+      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--npm-tag", "rc", "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_VERSION: "0.1.0-rc1", MOCK_VIEW_TAGS: '{"rc":"0.1.0-rc1"}' } },
     );
     assert.equal(visible.status, 0, visible.stderr);
+    assert.match(visible.stdout, /dist-tag 'rc'/u);
+
+    const missingTag = node(
+      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--npm-tag", "rc", "--timeout", "1", "--interval", "1", "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_VERSION: "0.1.0-rc1", MOCK_VIEW_TAGS: "{}" } },
+    );
+    assert.equal(missingTag.status, 1);
+    assert.match(missingTag.stderr, /timed out/u);
 
     const absent = node(
       [
         path.join(SCRIPTS, "wait-for-npm-packages.mjs"),
         "--version",
         "0.1.0-rc1",
+        "--npm-tag",
+        "rc",
         "--timeout",
         "1",
         "--interval",
@@ -775,10 +927,82 @@ test("wait-for-npm-packages: resolves via a mocked view and times out on absence
     assert.match(absent.stderr, /timed out/u);
 
     const unlocked = node(
-      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--registry", "https://evil.example/", "--view-cmd", `node ${mockView}`],
+      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--npm-tag", "rc", "--registry", "https://evil.example/", "--view-cmd", `node ${mockView}`],
       { env: { ...process.env, MOCK_VIEW_VERSION: "0.1.0-rc1" } },
     );
     assert.equal(unlocked.status, 1);
+
+    const untagged = node(
+      [path.join(SCRIPTS, "wait-for-npm-packages.mjs"), "--version", "0.1.0-rc1", "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_VERSION: "0.1.0-rc1" } },
+    );
+    assert.equal(untagged.status, 1);
+    assert.match(untagged.stderr, /--npm-tag is required/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("wait-for-npm-packages: waits for the dist-tag to catch up with the version", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "wait-tag-"));
+  try {
+    const tagsFile = path.join(work, "tags.json");
+    const pollsFile = path.join(work, "polls");
+    writeFileSync(tagsFile, JSON.stringify({ rc: "0.0.9" }));
+    writeFileSync(pollsFile, "0");
+    // The version becomes visible at poll 2, but the dist-tag write only
+    // propagates at poll 3: the waiter must keep polling both, since the
+    // very next workflow step gates on the dist-tag.
+    const mockView = path.join(work, "mock-view.mjs");
+    writeFileSync(
+      mockView,
+      `${[
+        "import { readFileSync, writeFileSync } from 'node:fs';",
+        "const args = process.argv.slice(2);",
+        "const target = args[0] ?? '';",
+        "const field = args.slice(1).find((a) => !a.startsWith('--') && !/^https?:/u.test(a)) ?? '';",
+        "const versionQuery = target.includes('@') && target.slice(target.lastIndexOf('@') + 1).includes('.');",
+        "if (field === 'version' || versionQuery) {",
+        "  const polls = Number(readFileSync(process.env.MOCK_POLLS_FILE, 'utf8')) + 1;",
+        "  writeFileSync(process.env.MOCK_POLLS_FILE, String(polls));",
+        "  if (polls < 2) { console.error('E404 Not Found'); process.exit(1); }",
+        "  if (polls === 3) {",
+        "    const tags = JSON.parse(readFileSync(process.env.MOCK_TAGS_FILE, 'utf8'));",
+        "    tags.rc = '0.1.0-rc1';",
+        "    writeFileSync(process.env.MOCK_TAGS_FILE, JSON.stringify(tags));",
+        "  }",
+        "  console.log(JSON.stringify('0.1.0-rc1'));",
+        "} else if (field.startsWith('dist-tags')) {",
+        "  const tags = JSON.parse(readFileSync(process.env.MOCK_TAGS_FILE, 'utf8'));",
+        "  const key = field.split('.')[1];",
+        "  const value = tags[key];",
+        "  if (value === undefined) { console.error('E404 Not Found'); process.exit(1); }",
+        "  console.log(JSON.stringify(value));",
+        "} else { console.error('unsupported mock query: ' + field); process.exit(1); }",
+      ].join("\n")}\n`,
+    );
+    const result = node(
+      [
+        path.join(SCRIPTS, "wait-for-npm-packages.mjs"),
+        "--version",
+        "0.1.0-rc1",
+        "--npm-tag",
+        "rc",
+        "--timeout",
+        "10",
+        "--interval",
+        "0",
+        "--view-cmd",
+        `node ${mockView}`,
+      ],
+      { env: { ...process.env, MOCK_POLLS_FILE: pollsFile, MOCK_TAGS_FILE: tagsFile } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /dist-tag 'rc'/u);
+    assert.ok(
+      Number(readFileSync(pollsFile, "utf8")) >= 3,
+      "the waiter must keep polling while the dist-tag lags the version",
+    );
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

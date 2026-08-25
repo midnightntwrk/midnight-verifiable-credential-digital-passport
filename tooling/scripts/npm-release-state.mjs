@@ -155,6 +155,9 @@ const parseArgs = (argv) => {
   if (options.verify && options.npmTag !== null && options.version === null) {
     throw new Error("--npm-tag requires --version");
   }
+  if (options.protectLatest && options.version === null) {
+    throw new Error("--protect-latest requires --version");
+  }
   if (options.repair && (options.npmTag === null || options.version === null)) {
     throw new Error("--repair requires --npm-tag and --version");
   }
@@ -225,12 +228,9 @@ const main = () => {
         // with a non-latest dist-tag (precedent: @midnight-ntwrk/credential-model,
         // first published as 0.1.0-rc1, still carries 'latest' on an rc). The
         // tag cannot be removed once set, so tolerate it on first publication —
-        // but only when it points at the version this run just published.
-        if (
-          options.version !== null &&
-          after.latest !== undefined &&
-          after.latest !== options.version
-        ) {
+        // but only when it points at the version this run just published
+        // (--protect-latest always runs with --version, enforced in parseArgs).
+        if (after.latest !== undefined && after.latest !== options.version) {
           failures.push(
             `${name}: first publication set 'latest' to ${after.latest} instead of the published ${options.version}`,
           );

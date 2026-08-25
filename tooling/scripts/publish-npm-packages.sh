@@ -28,6 +28,8 @@
 #   NODE_AUTH_TOKEN         the org npm automation token (via .npmrc; never an argument)
 #   NPM_VIEW_COMMAND        (tests only) mocked `npm view`
 #   NPM_DIST_TAG_COMMAND    (tests only) mocked `npm dist-tag`
+#   NPM_VIEW_RETRIES        verification poll attempts before failing (default 12)
+#   NPM_VIEW_INTERVAL       seconds between verification polls (default 5)
 
 set -euo pipefail
 
@@ -79,6 +81,16 @@ NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org/}"
 VIEW_COMMAND="${NPM_VIEW_COMMAND:-npm view}"
 DIST_TAG_COMMAND="${NPM_DIST_TAG_COMMAND:-npm dist-tag}"
 
+# Post-publish verification budget: registry visibility lags behind a
+# successful publish (the dedicated wait-for-npm-packages.mjs workflow step
+# exists for the same propagation lag), so verification polls instead of
+# failing on the first absent answer.
+VIEW_RETRIES="${NPM_VIEW_RETRIES:-12}"
+VIEW_INTERVAL="${NPM_VIEW_INTERVAL:-5}"
+case "${VIEW_RETRIES}" in '' | *[!0-9]*) fail "NPM_VIEW_RETRIES must be a positive integer (got '${VIEW_RETRIES}')" ;; esac
+[ "${VIEW_RETRIES}" -ge 1 ] || fail "NPM_VIEW_RETRIES must be a positive integer (got '${VIEW_RETRIES}')"
+case "${VIEW_INTERVAL}" in '' | *[!0-9]*) fail "NPM_VIEW_INTERVAL must be a non-negative integer of seconds (got '${VIEW_INTERVAL}')" ;; esac
+
 # The token is consumed through .npmrc / the environment only — never workflow
 # inputs, command arguments, repository files, or logs.
 [ -n "${NODE_AUTH_TOKEN:-}" ] || fail "NODE_AUTH_TOKEN is not set; refusing to publish"
@@ -96,6 +108,26 @@ view_json() {
     node -e "const v = JSON.parse(process.argv[1]); if (v !== undefined && v !== null) console.log(v);" "${out}" 2>/dev/null || true
   fi
   return 0
+}
+
+view_json_until() {
+  # view_json_until <name> <field> <expected> <what> — polls view_json until
+  # it prints <expected>, within the bounded propagation budget above. A
+  # single immediate check would report false failures while the registry
+  # catches up with a publish or dist-tag write that already succeeded.
+  local name="$1" field="$2" expected="$3" what="$4" attempt value
+  for attempt in $(seq 1 "${VIEW_RETRIES}"); do
+    value="$(view_json "${name}" "${field}")"
+    if [ "${value}" = "${expected}" ]; then
+      return 0
+    fi
+    if [ "${attempt}" -lt "${VIEW_RETRIES}" ]; then
+      echo "publish-npm-packages: ${what} not yet visible on the registry (got '${value:-<unset>}'), polling again in ${VIEW_INTERVAL}s (${attempt}/${VIEW_RETRIES})" >&2
+      sleep "${VIEW_INTERVAL}"
+    fi
+  done
+  echo "publish-npm-packages: ${what} never converged to '${expected}' within $((VIEW_RETRIES * VIEW_INTERVAL))s of polling" >&2
+  return 1
 }
 
 PUBLISHED=0
@@ -117,9 +149,8 @@ for TARBALL in "${TARBALLS[@]}"; do
     else
       echo "publish-npm-packages: ${NAME}@${VERSION} already published but dist-tag '${NPM_TAG}' resolves to '${CURRENT_TAG:-<unset>}' — repairing"
       ${DIST_TAG_COMMAND} add "${NAME}@${VERSION}" "${NPM_TAG}" --registry "${NPM_REGISTRY}"
-      REPAIRED="$(view_json "${NAME}" "dist-tags.${NPM_TAG}")" || REPAIRED=""
-      [ "${REPAIRED}" = "${VERSION}" ] ||
-        fail "dist-tag repair for ${NAME} '${NPM_TAG}' did not take effect (still '${REPAIRED:-<unset>}')"
+      view_json_until "${NAME}" "dist-tags.${NPM_TAG}" "${VERSION}" "dist-tag '${NPM_TAG}' for ${NAME} after repair" ||
+        fail "dist-tag repair for ${NAME} '${NPM_TAG}' did not take effect (still not '${VERSION}' after $((VIEW_RETRIES * VIEW_INTERVAL))s)"
     fi
     NOOP=$((NOOP + 1))
     continue
@@ -132,10 +163,10 @@ for TARBALL in "${TARBALLS[@]}"; do
     --provenance
 
   # Tarball-then-version verification: the registry must now resolve the
-  # exact version that was packed in this run.
-  PUBLISHED_VERSION="$(view_json "${NAME}@${VERSION}" version)"
-  [ "${PUBLISHED_VERSION}" = "${VERSION}" ] ||
-    fail "post-publish verification failed: ${NAME}@${VERSION} is not visible on ${NPM_REGISTRY}"
+  # exact version that was packed in this run — polled, because visibility
+  # lags behind a successful publish.
+  view_json_until "${NAME}@${VERSION}" version "${VERSION}" "version ${NAME}@${VERSION}" ||
+    fail "post-publish verification failed: ${NAME}@${VERSION} did not become visible on ${NPM_REGISTRY} within $((VIEW_RETRIES * VIEW_INTERVAL))s (propagation lag; check the registry before re-dispatching — versions are immutable and a rerun is an idempotent no-op)"
   echo "publish-npm-packages: ${NAME}@${VERSION} published and verified"
   PUBLISHED=$((PUBLISHED + 1))
 done
