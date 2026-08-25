@@ -132,16 +132,24 @@ commitments) is possible unless holders use per-presentation fresh credentials
 
 *Boundary: `assertValidDigitalPassportAgePredicate` (`helpers.compact`).*
 
-Instead of revealing `dateOfBirth`, the holder can prove
-`currentDay - dateOfBirthDays >= ageThresholdYears * 365` with the date of
-birth supplied as a **private witness** bound to the committed
-`dateOfBirthCommitment` (mismatched witnesses fail before the predicate is
-evaluated). The threshold is a `Uint<8>`; positivity is asserted upstream of
-this circuit — `assertValidDigitalPassportPresentationRequest` requires a
-positive `requestedAgeThresholdYears` and
-`assertValidDigitalPassportPresentation` asserts `ageThresholdYears > 0` —
-while the predicate circuit itself evaluates only the bound witness and the
-threshold comparison.
+Instead of revealing `dateOfBirth`, the holder can prove that their exact
+calendar age meets the threshold, with the date of birth supplied as a
+**private witness** bound to the committed `dateOfBirthCommitment` (mismatched
+witnesses fail before the predicate is evaluated). Both `currentDay` and the
+witness `dateOfBirthDays` are decomposed into civil dates — each
+decomposition is rejected unless it exactly reconstructs its day number — and
+the circuit asserts `currentDay >= dateOfBirthDays` and that the full
+calendar years elapsed, counted leap-day aware (the age increments exactly on
+the birth month/day each year), are at least `ageThresholdYears`
+(`ageInYears = currentDate.year - dateOfBirthDate.year -
+(beforeBirthdayThisYear ? 1 : 0)`; `src/test/age-predicate.test.ts`
+explicitly rejects proofs that merely satisfy a flat
+`ageThresholdYears * 365` day count). The threshold is a `Uint<8>`;
+positivity is asserted upstream of this circuit —
+`assertValidDigitalPassportPresentationRequest` requires a positive
+`requestedAgeThresholdYears` and `assertValidDigitalPassportPresentation`
+asserts `ageThresholdYears > 0` — while the predicate circuit itself
+evaluates only the bound witness and the threshold comparison.
 
 **Threats addressed**
 
@@ -158,11 +166,8 @@ or sloppy integrator that derives "today" from an untrusted source accepts
 predicates against a forged clock. Acceptance decisions must feed this
 argument from a trustworthy time source.
 
-**Residual risks.** The predicate uses calendar years of 365 days
-(`ageThresholdYears * 365`): people born on a leap-day-adjacent window may
-satisfy a threshold up to ~1 day early/late relative to exact calendar age.
-No timezone semantics are defined; `dateOfBirthDays` and `currentDay` must
-come from the same day-numbering convention.
+**Residual risks.** No timezone semantics are defined; `dateOfBirthDays` and
+`currentDay` must come from the same day-numbering convention.
 
 ## 5. Presentation-request validation
 
@@ -201,7 +206,8 @@ the **exact** requested threshold.
   unmet.
 
 **Trust boundary (explicit in code).** The request helper proves *semantics
-only*; it "does not authenticate who authored the request" (comment on
+only*; it "does not authenticate who authored the request outside the
+challenge and issuer-binding checks below" (comment on
 `assertDigitalPassportPresentationSatisfiesRequest`). Transport-layer
 authentication of the verifier (who really issued this request) is the
 integrator's protocol responsibility.
@@ -304,7 +310,7 @@ prover host.
 | A5 | Expiration checked by the caller against trusted time | core envelope validator | Expired credentials accepted |
 | A6 | Prover host is holder-trusted (or local) | `pureCircuits` + runtime | Witness leakage to remote prover |
 | A7 | Issuer DID resolves to the signing key (caller duty) | `issuerVerificationMethodRef` asserts | Impersonation via un-resolved method refs |
-| A8 | Day numbering is consistent between DOB and current day | `Uint<32>` day fields | ±1-day age boundary errors |
+| A8 | Day numbering is consistent between DOB and current day | `Uint<32>` day fields | Incorrectly computed calendar age (wrong accept/reject) |
 
 ## 10. Out of scope
 
