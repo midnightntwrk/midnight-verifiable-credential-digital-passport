@@ -17,7 +17,7 @@
 // npm release state (npm-publication: "Dist-tag safety and idempotency").
 // Ported from midnight-verifiable-credentials. Snapshots the npm dist-tags
 // before publication and verifies them afterwards, failing closed on drift —
-// in particular protecting `latest` during snapshot/rc publications.
+// in particular protecting an existing `latest` during snapshot/rc publications.
 //
 // CLI:
 //   npm-release-state.mjs --snapshot [--out <file>] [--registry <url>] [--view-cmd <cmd>]
@@ -219,9 +219,25 @@ const main = () => {
     }
 
     if (options.protectLatest && options.npmTag !== "latest") {
-      if (after.latest !== before.latest) {
+      if (before.latest === undefined) {
+        // First publication of this package: the npmjs registry always sets
+        // 'latest' to the very first published version, even when publishing
+        // with a non-latest dist-tag (precedent: @midnight-ntwrk/credential-model,
+        // first published as 0.1.0-rc1, still carries 'latest' on an rc). The
+        // tag cannot be removed once set, so tolerate it on first publication —
+        // but only when it points at the version this run just published.
+        if (
+          options.version !== null &&
+          after.latest !== undefined &&
+          after.latest !== options.version
+        ) {
+          failures.push(
+            `${name}: first publication set 'latest' to ${after.latest} instead of the published ${options.version}`,
+          );
+        }
+      } else if (after.latest !== before.latest) {
         failures.push(
-          `${name}: 'latest' moved from ${before.latest ?? "<unset>"} to ${after.latest ?? "<unset>"} during a non-release publication`,
+          `${name}: 'latest' moved from ${before.latest} to ${after.latest ?? "<unset>"} during a non-release publication`,
         );
       }
     }

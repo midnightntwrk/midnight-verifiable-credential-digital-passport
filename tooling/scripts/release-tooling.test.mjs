@@ -689,6 +689,44 @@ test("npm-release-state: a not-yet-published package snapshots as empty dist-tag
   }
 });
 
+test("npm-release-state: first publication tolerates the registry auto-setting 'latest'", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-state-first-publish-"));
+  try {
+    const mockView = MOCK_VIEW(work);
+    const stateFile = path.join(work, "state.json");
+    const tagsFile = path.join(work, "tags.json");
+
+    // Snapshot the never-published package (E404 → empty dist-tag state) …
+    const snapshot = node(
+      [path.join(SCRIPTS, "npm-release-state.mjs"), "--snapshot", "--out", stateFile, "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_MISSING: "1" } },
+    );
+    assert.equal(snapshot.status, 0, snapshot.stderr);
+
+    // … then the registry shows the post-first-publish state: npmjs sets both
+    // the channel tag and `latest` to the just-published version. The
+    // `--protect-latest` check must tolerate this — there was no `latest` to
+    // protect before the first publication.
+    writeFileSync(tagsFile, JSON.stringify({ latest: "0.1.0-rc1", rc: "0.1.0-rc1" }));
+    const ok = node(
+      [path.join(SCRIPTS, "npm-release-state.mjs"), "--verify", "--snapshot-file", stateFile, "--npm-tag", "rc", "--version", "0.1.0-rc1", "--protect-latest", "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_TAGS_FILE: tagsFile } },
+    );
+    assert.equal(ok.status, 0, ok.stderr);
+
+    // But only when `latest` points at the version this run published.
+    writeFileSync(tagsFile, JSON.stringify({ latest: "9.9.9", rc: "0.1.0-rc1" }));
+    const foreign = node(
+      [path.join(SCRIPTS, "npm-release-state.mjs"), "--verify", "--snapshot-file", stateFile, "--npm-tag", "rc", "--version", "0.1.0-rc1", "--protect-latest", "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_TAGS_FILE: tagsFile } },
+    );
+    assert.equal(foreign.status, 1);
+    assert.match(foreign.stderr, /first publication set 'latest' to 9\.9\.9/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 test("npm-release-state: non-E404 registry errors still fail closed", () => {
   const work = mkdtempSync(path.join(tmpdir(), "release-state-broken-"));
   try {

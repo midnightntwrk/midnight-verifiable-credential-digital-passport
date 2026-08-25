@@ -95,7 +95,12 @@ The first publication creates the package in the `@midnight-ntwrk` org:
    → pack + contract check + tarball consumer test → SPDX SBOMs → dist-tag
    snapshot → evidence artifact upload → publish with provenance →
    propagation wait → dist-tag verification → registry-mode consumer test →
-   summary.
+   summary. Note: on the very first publication of the package the npmjs
+   registry automatically sets `latest` to the published version even with
+   `--tag rc` (npm behavior; see the `@midnight-ntwrk/credential-model`
+   precedent). The dist-tag verification tolerates this for a
+   never-before-published package; `latest` will keep pointing at the newest
+   rc until the first `release` dispatch moves it to a stable version.
 4. Any step failing means **nothing was published** unless the failure is
    after the publish step; versions are immutable, so a partial failure before
    publish is always safe to re-dispatch.
@@ -113,9 +118,12 @@ npm view @midnight-ntwrk/midnight-verifiable-credential-digital-passport@0.1.0-r
 Confirm:
 
 - the version is **public** on npmjs (no `private: true` masking),
-- the dist-tag matches the channel (`rc` for `0.1.0-rc1`) and **`latest` is
-  untouched** (still the previous stable release — absent before the first
-  `release` dispatch),
+- the dist-tag matches the channel (`rc` for `0.1.0-rc1`) and **`latest`
+  still points at the previous stable release** — with one exception: on the
+  very first publication of the package, npmjs automatically sets `latest`
+  to the published version even when publishing with a non-latest dist-tag,
+  so until the first `release` dispatch, `latest` legitimately points at the
+  newest rc,
 - the **provenance attestation** is present (published with `--provenance`),
 - the release-evidence artifact (tarballs, SBOMs, dist-tag snapshot) is
   attached to the workflow run,

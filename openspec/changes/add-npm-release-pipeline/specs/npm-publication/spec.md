@@ -77,12 +77,17 @@ The workflow SHALL publish the tested tarballs to `https://registry.npmjs.org/` 
 
 ### Requirement: Dist-tag safety and idempotency
 
-Before publishing, the workflow SHALL snapshot the relevant npm dist-tags. After publishing, it SHALL verify them and fail closed on unexpected drift, in particular protecting the `latest` tag during `snapshot` and `rc` publications. Re-running the workflow for an already-published version and dist-tag SHALL be a no-op that succeeds without republishing.
+Before publishing, the workflow SHALL snapshot the relevant npm dist-tags. After publishing, it SHALL verify them and fail closed on unexpected drift, in particular protecting an existing `latest` tag during `snapshot` and `rc` publications. On the very first publication of a package — when no `latest` exists to protect — the workflow SHALL tolerate the registry setting `latest` to the just-published version (unavoidable npmjs behavior) and fail only if `latest` resolves to any other version. Re-running the workflow for an already-published version and dist-tag SHALL be a no-op that succeeds without republishing.
 
 #### Scenario: latest protected during prerelease
 
 - **WHEN** an `rc` or `snapshot` version is published
 - **THEN** the `latest` dist-tag still resolves to its pre-publication version, else the workflow fails
+
+#### Scenario: First publication tolerates the registry setting latest
+
+- **WHEN** the very first version of a package is published under an `rc` or `snapshot` dist-tag
+- **THEN** the workflow tolerates `latest` resolving to that just-published version (the registry sets it unconditionally on first publication), but fails if `latest` resolves to any other version
 
 #### Scenario: Idempotent rerun
 
