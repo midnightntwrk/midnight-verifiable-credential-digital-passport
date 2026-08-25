@@ -56,6 +56,13 @@ const viewDistTags = (name, { viewCmd, registry }) => {
     { encoding: "utf8" },
   );
   if (result.status !== 0) {
+    const output = `${result.stderr ?? ""}${result.stdout ?? ""}`;
+    if (/E404/u.test(output)) {
+      // The package has never been published: the first publication has no
+      // prior dist-tag state to protect, so the snapshot is empty. Any other
+      // registry error still fails closed.
+      return {};
+    }
     throw new Error(
       `registry view failed for ${name}: ${result.stderr || result.stdout}`,
     );

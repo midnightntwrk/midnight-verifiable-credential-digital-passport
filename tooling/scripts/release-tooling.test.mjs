@@ -134,6 +134,8 @@ const MOCK_VIEW = (dir) => {
     `${[
       "import { existsSync, readFileSync } from 'node:fs';",
       "const args = process.argv.slice(2);",
+      "if (process.env.MOCK_VIEW_MISSING) { console.error('npm error code E404'); process.exit(1); }",
+      "if (process.env.MOCK_VIEW_BROKEN) { console.error('npm error code E500'); process.exit(1); }",,
       "const target = args[0] ?? ''",
       "const field = args.slice(1).find((a) => !a.startsWith('--') && !/^https?:/u.test(a)) ?? '';",
       "const versionQuery = target.slice(target.lastIndexOf('@') + 1).includes('.');",
@@ -661,6 +663,43 @@ test("npm-release-state: snapshot and verify with tag repair under a mocked regi
     });
     assert.equal(unlocked.status, 1);
     assert.match(unlocked.stderr, /locked/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// First-publication registry state
+// ---------------------------------------------------------------------------
+
+test("npm-release-state: a not-yet-published package snapshots as empty dist-tags (E404)", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-state-first-"));
+  try {
+    const mockView = MOCK_VIEW(work);
+    const stateFile = path.join(work, "state.json");
+    const snapshot = node(
+      [path.join(SCRIPTS, "npm-release-state.mjs"), "--snapshot", "--out", stateFile, "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_MISSING: "1" } },
+    );
+    assert.equal(snapshot.status, 0, snapshot.stderr);
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    assert.deepEqual(state.packages[FAMILY].distTags, {});
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("npm-release-state: non-E404 registry errors still fail closed", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-state-broken-"));
+  try {
+    const mockView = MOCK_VIEW(work);
+    const stateFile = path.join(work, "state.json");
+    const snapshot = node(
+      [path.join(SCRIPTS, "npm-release-state.mjs"), "--snapshot", "--out", stateFile, "--view-cmd", `node ${mockView}`],
+      { env: { ...process.env, MOCK_VIEW_BROKEN: "1" } },
+    );
+    assert.equal(snapshot.status, 1);
+    assert.match(snapshot.stderr, /registry view failed/u);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
