@@ -2,7 +2,7 @@
 
 const DEFAULT_MODEL = "zai/glm-5.3"
 const JUDGE_MODEL = "qwencloud/deepseek-v4-flash-0731"
-const CHANGE_NAME = "richer-render-logging"
+const CHANGE_NAME = "add-npm-release-pipeline,"
 
 local predicateAgent = require("./predicate")
 

@@ -1,6 +1,6 @@
 --!strict
 
-const DEFAULT_MODEL = "adopt-oss-hardening"
+const DEFAULT_MODEL = "zai/glm-5.3"
 const JUDGE_MODEL = "qwencloud/deepseek-v4-flash-0731"
 const CHANGE_NAME = "adopt-oss-hardening"
 
