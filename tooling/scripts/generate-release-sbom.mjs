@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -136,7 +136,7 @@ export const sbomForTarball = (tarball, workDir) => {
 
 const isMain =
   process.argv[1] &&
-  import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href;
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
 if (isMain) {
   const args = process.argv.slice(2);
