@@ -59,18 +59,23 @@ const assertExternalActionsPinned = (workflow, relativePath) => {
   }
 };
 
+const assertCheckoutDoesNotPersistCredentials = (step, location) => {
+  if (
+    typeof step.uses === "string" &&
+    step.uses.startsWith("actions/checkout@") &&
+    step.with?.["persist-credentials"] !== false
+  ) {
+    errors.push(`${location} checkout must set persist-credentials: false`);
+  }
+};
+
 const assertCheckoutsDoNotPersistCredentials = (workflow, relativePath) => {
   for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
     for (const step of job.steps ?? []) {
-      if (
-        typeof step.uses === "string" &&
-        step.uses.startsWith("actions/checkout@") &&
-        step.with?.["persist-credentials"] !== false
-      ) {
-        errors.push(
-          `${relativePath} job ${jobName} checkout must set persist-credentials: false`,
-        );
-      }
+      assertCheckoutDoesNotPersistCredentials(
+        step,
+        `${relativePath} job ${jobName}`,
+      );
     }
   }
 };
@@ -91,10 +96,9 @@ for (const actionName of readdirSync(path.join(repoRoot, actionsDirectory))) {
   const relativePath = `${actionsDirectory}/${actionName}/action.yml`;
   const action = readYaml(relativePath);
   for (const step of action.runs?.steps ?? []) {
-    assertExternalActionPinned(
-      step.uses,
-      `${relativePath} step ${step.name ?? "<unnamed>"}`,
-    );
+    const location = `${relativePath} step ${step.name ?? "<unnamed>"}`;
+    assertExternalActionPinned(step.uses, location);
+    assertCheckoutDoesNotPersistCredentials(step, location);
   }
 }
 
