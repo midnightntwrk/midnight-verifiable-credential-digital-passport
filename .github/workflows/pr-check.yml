@@ -50,6 +50,7 @@ jobs:
             config
             release
             nix
+            security
           requireScope: false
           subjectPattern: ^(?=.*\S).+$
           subjectPatternError: |
