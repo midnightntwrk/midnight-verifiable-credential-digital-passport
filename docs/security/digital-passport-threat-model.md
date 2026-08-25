@@ -154,8 +154,9 @@ evaluates only the bound witness and the threshold comparison.
 **Threats addressed**
 
 - *False age claim:* the witness must open the credential's actual date-of-birth
-  commitment; a younger witness fails the binding assert, an older future
-  witness fails `currentDay >= dateOfBirthDays`.
+  commitment; any mismatched witness — younger or older — fails the binding
+  assert, and a witness dated after the current day (a future date of birth)
+  fails `currentDay >= dateOfBirthDays`.
 - *Under-threshold acceptance:* the non-strict `>=` threshold assert exits the
   circuit when unmet (fail-closed asserts, verified by
   `src/test/age-predicate.test.ts`).
