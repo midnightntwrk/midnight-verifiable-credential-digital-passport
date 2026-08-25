@@ -69,6 +69,11 @@ export const packageVerificationCode = (packageRoot) => {
 
 /** Builds the SPDX 2.3 document for one tarball. */
 export const sbomForTarball = (tarball, workDir) => {
+  // The work dir may be shared across tarballs; tar extraction overwrites
+  // matching paths but never deletes leftovers, so clear any previous
+  // extraction first — otherwise stale files would contaminate the next
+  // tarball's verification code and file count.
+  rmSync(path.join(workDir, "package"), { recursive: true, force: true });
   execFileSync("tar", ["-xzf", tarball, "-C", workDir]);
   const packageRoot = path.join(workDir, "package");
   const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));

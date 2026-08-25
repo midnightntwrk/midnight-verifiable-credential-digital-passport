@@ -820,6 +820,73 @@ test("generate-release-sbom: emits a dependency-free SPDX document per tarball",
   }
 });
 
+test("generate-release-sbom: tarballs never contaminate each other's verification codes", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "sbom-cross-"));
+  try {
+    // The first tarball carries an extra file that the second package lacks;
+    // both share the generator's single work directory.
+    const firstTarball = makeFixtureTarball(work, {
+      name: "@fixture/sbom-first",
+      version: "1.0.0",
+      mutate: (pkg) =>
+        writeFileSync(path.join(pkg, "dist", "only-first-package.txt"), "stale leftover\n"),
+    });
+    const secondTarball = makeFixtureTarball(work, {
+      name: "@fixture/sbom-second",
+      version: "2.0.0",
+    });
+    const outDir = path.join(work, "sbom-out");
+    const result = node(
+      [path.join(SCRIPTS, "generate-release-sbom.mjs"), "--artifacts-dir", work, "--out-dir", outDir],
+    );
+    assert.equal(result.status, 0, result.stderr);
+
+    const documents = readdirSync(outDir)
+      .filter((file) => file.endsWith(".spdx.json"))
+      .map((file) => JSON.parse(readFileSync(path.join(outDir, file), "utf8")));
+    assert.equal(documents.length, 2);
+    const byName = new Map(documents.map((document) => [document.packages[0].name, document]));
+
+    // Each document must describe exactly its own tarball's contents: extract
+    // each tarball into a fresh directory and compare verification codes and
+    // analyzed file counts. A stale leftover file from an earlier extraction
+    // in the shared work dir would change both values.
+    const countFiles = (dir) =>
+      readdirSync(dir, { withFileTypes: true }).reduce(
+        (total, entry) =>
+          entry.isDirectory()
+            ? total + countFiles(path.join(dir, entry.name))
+            : total + (entry.isFile() ? 1 : 0),
+        0,
+      );
+    for (const [tarball, name] of [
+      [firstTarball, "@fixture/sbom-first"],
+      [secondTarball, "@fixture/sbom-second"],
+    ]) {
+      const document = byName.get(name);
+      assert.ok(document, `missing SPDX document for ${name}`);
+      const extract = mkdtempSync(path.join(tmpdir(), "sbom-cross-extract-"));
+      try {
+        execFileSync("tar", ["-xzf", tarball, "-C", extract]);
+        assert.equal(
+          packageVerificationCode(path.join(extract, "package")),
+          document.packages[0].packageVerificationCode.packageVerificationCodeValue,
+          `${name}: verification code must be computed only from its own tarball contents`,
+        );
+        assert.match(
+          document.comment,
+          new RegExp(`\\(${countFiles(path.join(extract, "package"))} files analyzed`, "u"),
+          `${name}: analyzed file count must not include files from other tarballs`,
+        );
+      } finally {
+        rmSync(extract, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Publication workflow guard (mutation tests for check-security-workflows)
 // ---------------------------------------------------------------------------
