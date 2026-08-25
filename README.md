@@ -18,6 +18,22 @@ source-level coupling to the monorepo.
 - **Status:** `reference` maturity. The package manifest is publishable; the
   first registry release is cut by a separate release change.
 
+## Installation
+
+Install the published release-candidate line (the first stable `0.1.0`
+follows from `main` once the rc line is verified):
+
+```sh
+npm install @midnight-ntwrk/midnight-verifiable-credential-digital-passport@rc
+```
+
+> **Live version:** the first published release candidate is
+> `0.1.0-rc1` (under the `rc` dist-tag; `latest` stays untouched until the
+> stable release). The exact live version is recorded here after the first
+> publication dispatch — see the
+> [publication runbook](docs/guides/npmjs-publication.md) for the release
+> train (channels, branch rules, dist-tags, and rollback).
+
 ## Repository layout
 
 ```

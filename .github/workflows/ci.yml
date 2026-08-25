@@ -7,10 +7,13 @@ name: CI
 # runtime (@midnight-ntwrk/compact-runtime) are both published to npm, so every
 # lane installs from the registry and runs on every push and pull request. The
 # security-hygiene lanes (dependency-review, scorecard, scan) also run regardless.
+#
+# Pushes run on the integration branches (`develop` and `main`) so release
+# candidates have pre-dispatch CI signal before a publication dispatch.
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
   workflow_dispatch:
   schedule:
