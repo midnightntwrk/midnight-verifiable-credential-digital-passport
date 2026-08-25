@@ -19,10 +19,10 @@
 
 ## 3. Slice 3 — Threat model proposal (PR 3)
 
-- [ ] 3.1 Write `docs/security/digital-passport-threat-model.md` from the actual package source: claims set and privacy, selective-disclosure boundaries, age-over-threshold predicate circuit, presentation-request validation, proof-server trust, status/revocation assumptions; verify every named boundary corresponds to code that exists in `packages/midnight-verifiable-credential-digital-passport/`
-- [ ] 3.2 Open PR 3 flagged for `@midnightntwrk/mn-security` review, explicitly noting that promotion into `SECURITY.md` is their decision (design D8)
+- [x] 3.1 Write `docs/security/digital-passport-threat-model.md` from the actual package source: claims set and privacy, selective-disclosure boundaries, age-over-threshold predicate circuit, presentation-request validation, proof-server trust, status/revocation assumptions; verify every named boundary corresponds to code that exists in `packages/midnight-verifiable-credential-digital-passport/`
+- [x] 3.2 Open PR 3 flagged for `@midnightntwrk/mn-security` review, explicitly noting that promotion into `SECURITY.md` is their decision (design D8)
 
 ## 4. Change hygiene
 
-- [ ] 4.1 Update `CHANGELOG.md` under Unreleased with the hardening adoption summary
-- [ ] 4.2 Validate the change (`openspec validate adopt-oss-hardening --strict`) and confirm every task above is checked with its verification noted
+- [x] 4.1 Update `CHANGELOG.md` under Unreleased with the hardening adoption summary
+- [x] 4.2 Validate the change (`openspec validate adopt-oss-hardening --strict`) and confirm every task above is checked with its verification noted
