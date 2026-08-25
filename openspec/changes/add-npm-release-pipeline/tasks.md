@@ -37,7 +37,7 @@
 
 - [x] 6.1 Run the full offline gate: `pnpm run all` (now including release-tooling tests) and `pnpm run artifacts:pack`, and verify both are green with the catalog, contract check, and tarball consumer test exercising the real package
 - [x] 6.2 Dry-run the version path end-to-end: `prepare-release-version.mjs --channel rc --rc-index 1 --dry-run --json` for `0.1.0-rc1` and `--channel snapshot --dry-run --json` (expects run/sha suffix) and verify manifests retain `0.1.0` and no git state changes (`git status --porcelain` clean)
-- [ ] 6.3 Confirm the change's own PR title passes the PR-title gate (type `feat`, scope `release`) and CI is green on the PR
+- [x] 6.3 Confirm the change's own PR title passes the PR-title gate (type `feat`, scope `release`) and CI is green on the PR
 
 ## 7. First release (operator-manual, after merge)
 
