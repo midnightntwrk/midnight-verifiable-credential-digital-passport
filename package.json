@@ -11,6 +11,8 @@
   "packageManager": "pnpm@10.34.1",
   "scripts": {
     "clean": "turbo run clean",
+    "check:security-workflows": "node ./tooling/scripts/check-security-workflows.mjs",
+    "check:vulnerability-exceptions": "node ./tooling/scripts/check-vulnerability-exceptions.mjs",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "typecheck": "turbo run typecheck",
@@ -18,7 +20,7 @@
     "test": "turbo run test",
     "test:ci": "turbo run test:ci",
     "smoke": "pnpm --filter smoke-consumer smoke",
-    "all": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:ci"
+    "all": "pnpm run check:security-workflows && pnpm run check:vulnerability-exceptions && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:ci"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
@@ -36,6 +38,7 @@
     "turbo": "2.10.7",
     "typescript": "5.9.3",
     "vite": "7.3.6",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "yaml": "2.9.0"
   }
 }
