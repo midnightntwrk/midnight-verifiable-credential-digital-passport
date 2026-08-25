@@ -73,7 +73,14 @@ jobs:
 
       - name: Resolve publication context (dispatch-only, channel/branch gate)
         id: context
-        run: bash tooling/scripts/release-resolve-context.sh --channel "${{ inputs.channel }}" --version "${{ inputs.version }}" --rc-index "${{ inputs.rc_index }}"
+        env:
+          # Free-form workflow_dispatch inputs must never be interpolated into
+          # the run: script via ${{ }} (shell-injection risk); env values are
+          # never parsed as shell syntax.
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_RC_INDEX: ${{ inputs.rc_index }}
+        run: bash tooling/scripts/release-resolve-context.sh --channel "$RELEASE_CHANNEL" --version "$RELEASE_VERSION" --rc-index "$RELEASE_RC_INDEX"
 
       - name: Set up Node.js, pnpm, and Compact
         uses: ./.github/actions/setup-node-pnpm
