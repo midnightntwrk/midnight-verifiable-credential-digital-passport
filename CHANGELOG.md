@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pinned the transitive `nanoid` to **3.3.18** via a single workspace
+  override, clearing **GHSA-2v37-7h3g-55p8** (high: custom generators can
+  loop indefinitely when size is zero). The lockfile had resolved 3.3.17
+  while 3.3.18 sat inside the 7-day `minimumReleaseAge` window, and
+  `pnpm update` no-ops on an already-satisfying lockfile; 3.3.18 carries npm
+  provenance attestations like its predecessor. Dev-tooling scope only
+  (postcss chain) — surfaced by the first `develop` → `main` dependency
+  review, which fails on high severity.
+
 ### Added
 
 - The npmjs release train for

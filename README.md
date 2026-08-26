@@ -99,9 +99,11 @@ publishable package under `packages/` flows into this output automatically.
 > **Published-core note:** the family's core contract dependency
 > `@midnight-ntwrk/credential-compact@0.1.0-rc3` is published to npm alongside
 > `@midnight-ntwrk/compact-runtime@0.16.0`. The manifest is strictly
-> registry-clean — there is no `pnpm.overrides`, no `.core-rc/`, and no `file:`
-> override anywhere — so local build/typecheck/test and the consumer smoke all
-> resolve from the registry. See the package
+> registry-clean — dependencies resolve from the registry with no `.core-rc/`
+> and no `file:` override anywhere. The workspace carries exactly one
+> advisory-driven override (`nanoid@3.3.18`, GHSA-2v37-7h3g-55p8) in the
+> dev-tooling chain; it does not touch the publishable manifest or its
+> dependency policy. See the package
 > [README](packages/midnight-verifiable-credential-digital-passport/README.md)
 > and [design](openspec/changes/extract-digital-passport-credential/design.md) for details.
 
