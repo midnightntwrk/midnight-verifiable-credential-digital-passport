@@ -478,9 +478,10 @@ test("publish-script: no-op with dist-tag repair under a mocked registry view", 
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /already published/u);
     assert.match(result.stdout, /repairing/u);
-    assert.match(
+    assert.equal(
       readFileSync(distTagLog, "utf8").trim(),
-      new RegExp(`^${FAMILY.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}@9\\.9\\.9 rc$`, "u"),
+      `${FAMILY}@9.9.9 rc`,
+      "the mocked registry must record the repaired dist-tag add",
     );
     assert.equal(
       JSON.parse(readFileSync(tagsFile, "utf8")).rc,
@@ -1181,9 +1182,9 @@ test("generate-release-sbom: tarballs never contaminate each other's verificatio
           document.packages[0].packageVerificationCode.packageVerificationCodeValue,
           `${name}: verification code must be computed only from its own tarball contents`,
         );
-        assert.match(
-          document.comment,
-          new RegExp(`\\(${countFiles(path.join(extract, "package"))} files analyzed`, "u"),
+        const ownFileCount = countFiles(path.join(extract, "package"));
+        assert.ok(
+          document.comment.includes(`(${ownFileCount} files analyzed`),
           `${name}: analyzed file count must not include files from other tarballs`,
         );
       } finally {
@@ -1254,6 +1255,20 @@ test("publish workflow guard: mutated workflows fail (push trigger, widened perm
   assert.ok(
     assertPublishWorkflow(wrongChannels, "publish.yml").some((violation) =>
       violation.includes("snapshot|rc|release"),
+    ),
+  );
+
+  // Template-injection regression: a ${{ }} expansion inside a run: script
+  // must fail the guard even when everything else is intact.
+  const inlineExpansion = structuredClone(base);
+  const gateStep = inlineExpansion.jobs.publish.steps.find((step) =>
+    String(step.run ?? "").includes("release-resolve-context.sh"),
+  );
+  gateStep.run =
+    'bash tooling/scripts/release-resolve-context.sh --channel "${{ inputs.channel }}"';
+  assert.ok(
+    assertPublishWorkflow(inlineExpansion, "publish.yml").some((violation) =>
+      violation.includes("inside run:"),
     ),
   );
 });

@@ -151,6 +151,19 @@ export const assertPublishWorkflow = (workflow, relativePath) => {
     }
   }
 
+  // Template-injection hygiene (zizmor template-injection): expressions must
+  // never be interpolated directly into run: scripts — every value flows
+  // through the step's env map and is referenced as "$VAR".
+  for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+    for (const step of job.steps ?? []) {
+      if (typeof step.run === "string" && step.run.includes("${{")) {
+        violations.push(
+          `job ${jobName} step '${step.name ?? "<unnamed>"}' interpolates \${{ }} inside run: (use env indirection)`,
+        );
+      }
+    }
+  }
+
   return violations.map((violation) => `${relativePath} ${violation}`);
 };
 
