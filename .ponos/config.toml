@@ -1,7 +1,0 @@
-[agents.pi]
-command = "pi-acp"
-args = [ ]
-
-[agents.opencode]
-command = "opencode"
-args = ["acp"]
