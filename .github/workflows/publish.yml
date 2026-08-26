@@ -102,13 +102,19 @@ jobs:
 
       - name: Prepare the release version (stateless; never committed back)
         id: version
+        env:
+          # Outputs flow through env (never ${{ }} inside run:) so no future
+          # validator regression can turn them into shell syntax.
+          RELEASE_CHANNEL: ${{ steps.context.outputs.channel }}
+          RELEASE_RC_INDEX: ${{ steps.context.outputs.rc-index }}
+          RELEASE_BASE_VERSION: ${{ steps.context.outputs.base-version }}
         run: |
-          ARGS=(--channel "${{ steps.context.outputs.channel }}")
-          if [ -n "${{ steps.context.outputs.rc-index }}" ]; then
-            ARGS+=(--rc-index "${{ steps.context.outputs.rc-index }}")
+          ARGS=(--channel "$RELEASE_CHANNEL")
+          if [ -n "$RELEASE_RC_INDEX" ]; then
+            ARGS+=(--rc-index "$RELEASE_RC_INDEX")
           fi
-          if [ -n "${{ steps.context.outputs.base-version }}" ]; then
-            ARGS+=(--version "${{ steps.context.outputs.base-version }}")
+          if [ -n "$RELEASE_BASE_VERSION" ]; then
+            ARGS+=(--version "$RELEASE_BASE_VERSION")
           fi
           node tooling/scripts/prepare-release-version.mjs "${ARGS[@]}"
 
@@ -130,31 +136,46 @@ jobs:
           if-no-files-found: error
 
       - name: Publish the tested tarballs to npmjs
-        run: bash tooling/scripts/publish-npm-packages.sh --npm-tag "${{ steps.version.outputs.npm-tag }}"
+        env:
+          RELEASE_NPM_TAG: ${{ steps.version.outputs.npm-tag }}
+        run: bash tooling/scripts/publish-npm-packages.sh --npm-tag "$RELEASE_NPM_TAG"
 
       - name: Wait for registry propagation
-        run: node tooling/scripts/wait-for-npm-packages.mjs --version "${{ steps.version.outputs.version }}" --npm-tag "${{ steps.version.outputs.npm-tag }}" --registry "$NPM_REGISTRY"
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NPM_TAG: ${{ steps.version.outputs.npm-tag }}
+        run: node tooling/scripts/wait-for-npm-packages.mjs --version "$RELEASE_VERSION" --npm-tag "$RELEASE_NPM_TAG" --registry "$NPM_REGISTRY"
 
       - name: Verify the npm dist-tags (fail closed on drift)
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NPM_TAG: ${{ steps.version.outputs.npm-tag }}
         run: |
-          ARGS=(--verify --snapshot-file tooling/artifacts/npm-release-state.json --npm-tag "${{ steps.version.outputs.npm-tag }}" --version "${{ steps.version.outputs.version }}" --registry "$NPM_REGISTRY")
-          if [ "${{ steps.version.outputs.npm-tag }}" != "latest" ]; then
+          ARGS=(--verify --snapshot-file tooling/artifacts/npm-release-state.json --npm-tag "$RELEASE_NPM_TAG" --version "$RELEASE_VERSION" --registry "$NPM_REGISTRY")
+          if [ "$RELEASE_NPM_TAG" != "latest" ]; then
             ARGS+=(--protect-latest)
           fi
           node tooling/scripts/npm-release-state.mjs "${ARGS[@]}"
 
       - name: Run the registry-mode consumer test
-        run: node tooling/scripts/test-release-package-consumers.mjs --registry "$NPM_REGISTRY" --version "${{ steps.version.outputs.version }}"
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: node tooling/scripts/test-release-package-consumers.mjs --registry "$NPM_REGISTRY" --version "$RELEASE_VERSION"
 
       - name: Write the release summary
         if: always()
+        env:
+          RELEASE_CHANNEL: ${{ steps.context.outputs.channel }}
+          RELEASE_BRANCH: ${{ steps.context.outputs.branch }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NPM_TAG: ${{ steps.version.outputs.npm-tag }}
         run: |
           {
             echo "## Publication summary"
             echo ""
-            echo "- channel: \`${{ steps.context.outputs.channel }}\`"
-            echo "- branch: \`${{ steps.context.outputs.branch }}\`"
-            echo "- version: \`${{ steps.version.outputs.version }}\`"
-            echo "- npm dist-tag: \`${{ steps.version.outputs.npm-tag }}\`"
+            echo "- channel: \`$RELEASE_CHANNEL\`"
+            echo "- branch: \`$RELEASE_BRANCH\`"
+            echo "- version: \`$RELEASE_VERSION\`"
+            echo "- npm dist-tag: \`$RELEASE_NPM_TAG\`"
             echo "- registry: \`${NPM_REGISTRY}\`"
           } >> "$GITHUB_STEP_SUMMARY"
