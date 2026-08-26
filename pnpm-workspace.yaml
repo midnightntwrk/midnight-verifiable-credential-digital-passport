@@ -12,6 +12,15 @@ trustPolicy: no-downgrade
 minimumReleaseAgeExclude: []
 trustPolicyExclude: []
 
+# Advisory-driven transitive override: GHSA-2v37-7h3g-55p8 (high) is patched in
+# nanoid 3.3.18, but the lockfile had pinned 3.3.17 (resolved while 3.3.18 was
+# still inside the minimumReleaseAge window) and pnpm update no-ops on an
+# already-satisfying lockfile. 3.3.18 carries npm provenance attestations like
+# 3.3.17. Dev-tooling scope only (postcss/vite chain); the publishable
+# manifest's registry-clean dependency policy is unaffected.
+overrides:
+  nanoid: 3.3.18
+
 # Declared (reviewed) build-script allowances: pnpm skips the install scripts
 # of these otherwise-silent dependencies instead of executing them.
 ignoredBuiltDependencies:
