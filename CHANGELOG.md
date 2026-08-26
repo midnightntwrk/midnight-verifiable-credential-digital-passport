@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The npmjs release train for
+  `@midnight-ntwrk/midnight-verifiable-credential-digital-passport`, ported
+  from the `midnight-verifiable-credentials` publication model and reduced to
+  this single-package repository (change `add-npm-release-pipeline`):
+  - **`publish.yml`**: a dispatch-only publication workflow (`channel`
+    `snapshot`/`rc`/`release`, `version`, `rc_index`) with sibling branch
+    rules (`snapshot` from `develop` only, `rc` from `develop`/`main`,
+    `release` from `main` only), an in-run full gate (`pnpm run all` + smoke),
+    stateless version stamping (never committed back), tarball packing with a
+    contract check and clean-consumer tests (tarball and registry modes),
+    SPDX SBOMs, `--provenance`-enabled publication to the locked public npmjs
+    registry, dist-tag snapshot/verification with `latest` protection,
+    idempotent no-op reruns, and a 90-day release-evidence artifact.
+  - **Release tooling** under `tooling/scripts/` (all covered by the new
+    `test:release-tooling` suite wired into the CI gate): workspace catalog,
+    version preparation, context resolution, artifact packing, package
+    contract check, consumer testing, publication, dist-tag state,
+    propagation wait, and SBOM generation.
+  - **CI on `develop`**: the CI lane now runs on pushes to `develop` and
+    `main`, giving rc candidates pre-dispatch signal.
+  - **Self-guard extension**: `check-security-workflows` now asserts the
+    publication workflow stays dispatch-only, keeps its branch/channel gate,
+    pins the public npmjs registry, and holds least-privilege permissions.
+  - **Runbook** at `docs/guides/npmjs-publication.md` (ownership, token
+    policy, pre-dispatch gates, first-release dispatch, verification,
+    retry/rollback, incident response); README carries npm install
+    instructions; CODEOWNERS routes the release surface to
+    `ex-identus`/`mn-sre`/`mn-security`.
+  - **Manifest hygiene**: the family package manifest gains `publishConfig`,
+    `repository`, `description`, `keywords`, `homepage`, and `bugs`, plus a
+    package-level `CHANGELOG.md` shipped in the tarball.
+
 ### Security
 
 - Adopted the OSS security-hardening posture the sibling repositories

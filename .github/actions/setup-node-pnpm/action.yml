@@ -22,6 +22,14 @@ inputs:
     description: Arguments passed to `pnpm install`.
     required: false
     default: --frozen-lockfile --prefer-offline
+  registry-url:
+    description: >-
+      Optional npm registry URL for actions/setup-node. When set, setup-node
+      writes the .npmrc registry entry with an expanded ${NODE_AUTH_TOKEN}
+      placeholder, so publication steps authenticate through the environment
+      instead of arguments or files containing secrets.
+    required: false
+    default: ""
   node-version-file:
     description: File containing the Node version for actions/setup-node.
     required: false
@@ -44,6 +52,7 @@ runs:
         node-version-file: ${{ inputs.node-version-file }}
         cache: pnpm
         cache-dependency-path: pnpm-lock.yaml
+        registry-url: ${{ inputs.registry-url }}
 
     - name: Set up Compact toolchain
       if: inputs.compact-version != ''

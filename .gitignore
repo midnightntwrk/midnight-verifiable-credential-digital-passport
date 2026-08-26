@@ -36,6 +36,9 @@ coverage/
 # Output of 'npm pack'
 *.tgz
 
+# Release pipeline artifacts (packed tarballs, SBOMs, dist-tag state)
+tooling/artifacts/
+
 # dotenv environment variables file
 .env
 .env.local
@@ -66,10 +69,6 @@ core-compact-staging/
 # PI workspace
 .pi/*
 !.pi/settings.json
-
-# Ponos scripts (keep the type definition tracked)
-.ponos/*.luau
-!.ponos/ponos.d.luau
 
 # Nix build outputs
 result
