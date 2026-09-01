@@ -1728,9 +1728,11 @@ test("generate-release-sbom: tarballs never contaminate each other's verificatio
 // ---------------------------------------------------------------------------
 
 /** A mockable `gh` for the release-publication script: `create`/`upload`
- * record their command line and hash the files they receive (cwd = artifacts
- * dir); `view` serves the recorded state, so a rerun after create naturally
- * no-ops unless the state is mutated. */
+ * record their command line and hash exactly the files they receive,
+ * resolved relative to their cwd (the artifacts dir — like real gh, no
+ * subdirectory probing); `view` validates its --json fields against the
+ * fields real `gh release view` supports and serves the recorded state, so
+ * a rerun after create naturally no-ops unless the state is mutated. */
 const MOCK_GH = (dir) => {
   const script = path.join(dir, "mock-gh.mjs");
   writeFileSync(
@@ -1754,18 +1756,27 @@ const MOCK_GH = (dir) => {
       "  return files;",
       "};",
       "const resolveAsset = (name) => {",
-      "  const candidates = [name, `sbom/${name}`, `npm/${name}`];",
-      "  const found = candidates.find((candidate) => existsSync(path.resolve(process.cwd(), candidate)));",
-      "  if (!found) throw new Error('no such asset on disk: ' + name);",
-      "  return path.resolve(process.cwd(), found);",
+      "  const resolved = path.resolve(process.cwd(), name);",
+      "  if (!existsSync(resolved)) throw new Error('no such asset on disk: ' + name);",
+      "  return resolved;",
       "};",
       "const digestOf = (file) =>",
       "  'sha256:' + createHash('sha256').update(readFileSync(resolveAsset(file))).digest('hex');",
       "const assetFiles = (allArgs) => filesOf(allArgs.slice(3));",
       "if (sub === 'view') {",
       "  const state = readState();",
+      "  const supportedFields = ['assets', 'isPrerelease'];",
+      "  const fieldsArg = args[args.indexOf('--json') + 1] ?? '';",
+      "  const requested = fieldsArg.split(',').filter(Boolean);",
+      "  const unsupported = requested.filter((field) => !supportedFields.includes(field));",
+      "  if (unsupported.length > 0) {",
+      "    console.error('unknown JSON field: ' + unsupported.join(', '));",
+      "    process.exit(1);",
+      "  }",
       "  if (!state.exists || state.tag !== tag) { console.error('release not found'); process.exit(1); }",
-      "  console.log(JSON.stringify({ assets: state.assets, isPrerelease: state.isPrerelease, isLatest: state.isLatest }));",
+      "  const payload = {};",
+      "  for (const field of requested) payload[field] = state[field];",
+      "  console.log(JSON.stringify(payload));",
       "} else if (sub === 'create') {",
       "  appendFileSync(logFile, JSON.stringify(args) + '\\n');",
       "  const files = assetFiles(args);",
@@ -1775,7 +1786,6 @@ const MOCK_GH = (dir) => {
       "    tag,",
       "    assets: files.map((file) => ({ name: path.basename(file), digest: digestOf(file) })),",
       "    isPrerelease,",
-      "    isLatest: !isPrerelease,",
       "  });",
       "} else if (sub === 'upload') {",
       "  appendFileSync(logFile, JSON.stringify(args) + '\\n');",
@@ -1886,7 +1896,7 @@ test("publish-github-release: prepare writes deterministic SHA256SUMS and body",
 test("publish-github-release: publish creates an rc prerelease, then reruns as a verified no-op", () => {
   const work = mkdtempSync(path.join(tmpdir(), "release-gh-publish-"));
   try {
-    makeBridgeArtifacts(work);
+    const { tarball, sbomName } = makeBridgeArtifacts(work);
     const mockGh = MOCK_GH(work);
     const stateFile = path.join(work, "gh-state.json");
     const logFile = path.join(work, "gh.log");
@@ -1947,6 +1957,16 @@ test("publish-github-release: publish creates an rc prerelease, then reruns as a
     for (const asset of ["SHA256SUMS", "contract-report.json"]) {
       assert.ok(create.includes(asset), `create must upload ${asset}`);
     }
+    // Subdirectory assets must be passed relative to the artifacts dir
+    // (gh's cwd): bare basenames would not resolve on a real runner.
+    assert.ok(
+      create.includes(`npm/${path.basename(tarball)}`),
+      "create must pass the tarball as an artifacts-dir-relative path",
+    );
+    assert.ok(
+      create.includes(`sbom/${sbomName}`),
+      "create must pass the SBOM as an artifacts-dir-relative path",
+    );
     assert.match(created.stdout, /release-url=https:\/\/github\.com\/midnightntwrk\/midnight-verifiable-credential-digital-passport\/releases\/download\/v0\.1\.0-rc1\/midnight-ntwrk-midnight-verifiable-credential-digital-passport-0\.1\.0-rc1\.tgz/u);
     assert.match(readFileSync(output, "utf8"), /^release-url=https:\/\//u);
 
@@ -2030,6 +2050,11 @@ test("publish-github-release: a partial upload is completed by a rerun, drift is
     // Simulate a partial upload: drop one asset from the recorded state.
     const state = JSON.parse(readFileSync(stateFile, "utf8"));
     const dropped = state.assets.pop();
+    const droppedPath = ["SHA256SUMS", "contract-report.json"].includes(dropped.name)
+      ? dropped.name
+      : dropped.name.endsWith(".spdx.json")
+        ? `sbom/${dropped.name}`
+        : `npm/${dropped.name}`;
     writeFileSync(stateFile, JSON.stringify(state));
     const completed = node([
       path.join(SCRIPTS, "publish-github-release.mjs"),
@@ -2047,7 +2072,7 @@ test("publish-github-release: a partial upload is completed by a rerun, drift is
     const lines = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     const upload = lines.find((command) => command[1] === "upload");
     assert.ok(upload, "the missing asset must be uploaded");
-    assert.deepEqual(upload.slice(3, -2), [dropped.name], "only the missing asset is uploaded (no clobber)");
+    assert.deepEqual(upload.slice(3, -2), [droppedPath], "only the missing asset is uploaded, as an artifacts-dir-relative path (no clobber)");
     assert.equal(
       lines.filter((command) => command[1] === "create").length,
       1,

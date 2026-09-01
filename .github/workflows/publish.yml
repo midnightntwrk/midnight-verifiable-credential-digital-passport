@@ -90,6 +90,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Full history and tags: the tag reconciliation step resolves the
+          # operator tag (refs/tags/<tag>) with a local git rev-parse, and the
+          # default shallow clone carries no tags at all.
+          fetch-depth: 0
 
       - name: Resolve publication context (dispatch-only, channel/branch gate)
         id: context

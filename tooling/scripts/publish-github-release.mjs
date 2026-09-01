@@ -244,6 +244,12 @@ const publish = (options) => {
   const local = new Map(
     uploadFiles.map((asset) => [path.basename(asset), `sha256:${sha256File(asset)}`]),
   );
+  // gh resolves asset paths against its cwd (= the artifacts dir): the
+  // npm/ and sbom/ subdirectory assets must be passed relative to it, never
+  // as bare basenames.
+  const uploadPath = new Map(
+    uploadFiles.map((asset) => [path.basename(asset), path.relative(options.artifactsDir, asset)]),
+  );
   const prerelease = options.channel === "rc";
   const releaseView = () => {
     const view = gh([
@@ -253,7 +259,7 @@ const publish = (options) => {
       "--repo",
       options.repo,
       "--json",
-      "assets,isPrerelease,isLatest",
+      "assets,isPrerelease",
     ]);
     if (view.status !== 0) {
       return null;
@@ -268,13 +274,14 @@ const publish = (options) => {
   const view = releaseView();
   if (view === null) {
     // gh resolves asset paths and --notes-file against its cwd: run it from
-    // the artifacts dir so basenames work everywhere.
+    // the artifacts dir and pass artifacts-dir-relative paths so the npm/
+    // and sbom/ subdirectory assets resolve.
     const created = gh(
       [
         "release",
         "create",
         options.tag,
-        ...uploadFiles.map((asset) => path.basename(asset)),
+        ...uploadFiles.map((asset) => uploadPath.get(path.basename(asset))),
         "--repo",
         options.repo,
         "--title",
@@ -329,7 +336,14 @@ const publish = (options) => {
   if (missing.length > 0) {
     console.log(`[publish-github-release] uploading ${missing.length} missing asset(s): ${missing.join(", ")}`);
     const uploaded = gh(
-      ["release", "upload", options.tag, ...missing, "--repo", options.repo],
+      [
+        "release",
+        "upload",
+        options.tag,
+        ...missing.map((name) => uploadPath.get(name)),
+        "--repo",
+        options.repo,
+      ],
       { cwd: options.artifactsDir },
     );
     if (uploaded.status !== 0) {
