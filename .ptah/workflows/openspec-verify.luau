@@ -3,7 +3,7 @@
 local cfg = require("./../utils/config")
 local predicateAgent = require("./../utils/predicate")
 
-local pi: Agent = ponos.agent("pi")
+local pi: Agent = ptah.agent("pi")
 
 local iteration = 0
 while true do
@@ -20,7 +20,7 @@ while true do
 			{ sessionId = `judge-review:{iteration}`, model = cfg.judgeModel }
 		)
 	then
-		ponos.log("The change is ready to be synced and archived")
+		ptah.log("The change is ready to be synced and archived")
 		break
 	end
 
@@ -38,7 +38,7 @@ while true do
 	end
 
 	local fixResult = reviewer:prompt("Go ahead and resolve the blockers")
-	ponos.log("Fix result: " .. fixResult.text)
+	ptah.log("Fix result: " .. fixResult.text)
 
 	iteration += 1
 end

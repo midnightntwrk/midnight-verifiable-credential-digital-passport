@@ -4,10 +4,10 @@ local cfg = require("./../utils/config")
 local predicateAgent = require("./../utils/predicate")
 
 -- compile-time constants first
-const PR_URL = "https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/pull/26"
+const PR_URL = "https://github.com/patextreme/ptah/pull/6"
 const MAX_ITERATIONS = 15
 
-local pi: Agent = ponos.agent("pi")
+local pi: Agent = ptah.agent("pi")
 
 local converged = false
 local iteration = 0
@@ -15,9 +15,9 @@ while iteration < MAX_ITERATIONS do
 	local reviewer: Session = pi:session({ id = `reviewer:{iteration}` })
 	reviewer:setConfig("model", cfg.defaultModel)
 
-	reviewer:prompt(`Use the review instruction at .ponos/instructions/review-instruction.md to review PR {PR_URL}`)
+	reviewer:prompt(`Use the review instruction at .ptah/instructions/review-instruction.md to review PR {PR_URL}`)
 	local reviewVerdict = reviewer:prompt("Based on the review feedback, determine the blocking issues and non-blocking issues.")
-	ponos.log("Review verdict: " .. reviewVerdict.text)
+	ptah.log("Review verdict: " .. reviewVerdict.text)
 
 	if
 		predicateAgent(
@@ -47,7 +47,7 @@ while iteration < MAX_ITERATIONS do
 	end
 
 	local fixResult = reviewer:prompt("Go ahead and resolve the blockers")
-	ponos.log("Fix result: " .. fixResult.text)
+	ptah.log("Fix result: " .. fixResult.text)
 
 	reviewer:prompt("Commit the changes and push them to the PR branch so the next review sees them.")
 	reviewer:prompt("Also comment on the PR with review feedback")

@@ -1,6 +1,6 @@
 --!strict
 
-local oc: Agent = ponos.agent("opencode")
+local pi: Agent = ptah.agent("pi")
 
 export type PredicateOptions = {
 	sessionId: string,
@@ -12,7 +12,7 @@ local MAX_ATTEMPTS = 3
 local function buildPrompt(predicate: string, payload: string): string
 	return string.format(
 		[[
-Review if the following predicate is true in the payload, then submit the verdict as the JSON boolean true or false by calling this session's ponos result submit tool.
+Review if the following predicate is true in the payload, then submit the verdict as the JSON boolean true or false by calling this session's ptah result submit tool.
 
 ---
 
@@ -37,7 +37,7 @@ end
 -- are capped and exhaustion is a script error.
 local function predicateAgent(predicate: string, payload: string, options: PredicateOptions): boolean
 	for attempt = 1, MAX_ATTEMPTS do
-		local session: Session = oc:session({
+		local session: Session = pi:session({
 			id = options.sessionId,
 			resultSchema = { type = "boolean" },
 		})
@@ -47,7 +47,7 @@ local function predicateAgent(predicate: string, payload: string, options: Predi
 		if verdict ~= nil then
 			return verdict
 		end
-		ponos.log(`judge {options.sessionId} submitted no verdict (attempt {attempt}/{MAX_ATTEMPTS})`)
+		ptah.log(`judge {options.sessionId} submitted no verdict (attempt {attempt}/{MAX_ATTEMPTS})`)
 	end
 	return error(`judge never submitted a typed boolean verdict after {MAX_ATTEMPTS} attempts`)
 end
