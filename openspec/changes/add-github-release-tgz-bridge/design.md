@@ -35,7 +35,7 @@ A new early step (right after `release-resolve-context.sh`, before setup and the
 
 ### D4: Asset pipeline order — pack → sums → attest → create with assets → verify digests → URL consumer test
 
-SHA256SUMS is generated over the tarball, SBOM, and contract report before the release exists; the release is created in one shot with all assets and the generated body (channel, version, install URL, checksums, `sha256sum`/`gh attestation verify` one-liners, changelog link). After upload, a verification step re-downloads nothing — it compares the registry-reported asset digests (`gh release view --json assets`) against the local digests and fails on mismatch. `actions/attest-build-provenance` (pinned to a full commit SHA, as the checker requires) attests each uploaded asset with its sha256 digest. The 90-day evidence artifact upload is unchanged and still runs.
+The contract check is extended to emit a machine-readable report — `tooling/artifacts/contract-report.json`, per-tarball check results plus the resolved version, deterministic content (no timestamps) — without changing its exit semantics; landing inside `tooling/artifacts/` means the unchanged evidence-artifact upload picks it up automatically. SHA256SUMS is generated over the tarball, SBOM, and that report before the release exists; the release is created in one shot with all assets and the generated body (channel, version, install URL, checksums, `sha256sum`/`gh attestation verify` one-liners, changelog link). After upload, a verification step re-downloads nothing — it compares the registry-reported asset digests (`gh release view --json assets`) against the local digests and fails on mismatch. `actions/attest-build-provenance` (pinned to a full commit SHA, as the checker requires) attests each uploaded asset with its sha256 digest. The 90-day evidence artifact upload is unchanged and still runs.
 
 ### D5: Self-check and its tests are updated to assert the bridge contract, exactly
 
@@ -49,6 +49,10 @@ SHA256SUMS is generated over the tarball, SBOM, and contract report before the r
 
 Root README and package README gain a "Installing from GitHub Releases (temporary bridge)" section: pin the versioned `releases/download/<tag>/<file>.tgz` URL in `dependencies`, the lockfile freezes it, upgrades are a one-line URL edit; note that a direct URL dependency is not an exotic *sub*dependency (no `blockExoticSubdeps` exemption) and carries no registry publish date (no `minimumReleaseAge` applicability); include the verification commands as optional. No consumer repository is named anywhere.
 
+### D8: The npmjs suspension is a MODIFIED delta against `npm-publication` and `repository-toolchain`, not prose precedence
+
+`add-npm-release-pipeline` is archived and `openspec/specs/npm-publication/spec.md` exists, so the suspension is expressed where it belongs: this change MODIFIES the four registry-facing `npm-publication` requirements (registry publication with provenance, dist-tag safety and idempotency, post-publication registry verification, and release evidence) to apply only while the npmjs-registry publication path is active, naming the bridge window as the suspension period. Release evidence is scoped with them because its dist-tag state snapshot is written by the suspended step 10 (`npm-release-state.mjs --snapshot`) — leaving it unconditional would contradict the suspension, since the evidence upload would succeed without the state file the requirement demands. During the bridge the evidence artifact carries the tested tarballs and SBOMs, while the SHA256SUMS, contract report, and attestations ride on the release assets. The other four `npm-publication` requirements stay in force unchanged — the bridge only strengthens their guarantees (e.g., `snapshot` fails closed on every branch). The bridge-exit change restores the four requirements to unconditional form when it removes `github-release-distribution`, so the main specs never carry contradictory unconditional claims about the same workflow. `repository-toolchain`'s `Continuous integration lanes` requirement needs the same treatment: its publication-workflow clause demands a provenance-enabled publish and least-privilege permissions, and its drift scenario requires the self-check to fail a workflow that disables provenance — exactly what the bridged workflow does — so that requirement is MODIFIED in this change to scope its publication-workflow clause to the npmjs-path-active period (the self-check asserts the bridge shape instead during the window), and the exit change restores it alongside the four `npm-publication` requirements.
+
 ## Risks / Trade-offs
 
 - [Mutable release assets — an admin can replace a pinned URL's bytes] → Accepted (grilling Q7); mitigated by artifact attestations (replacement is detectable by `gh attestation verify`), documented residual risk in the runbook, and tag-deletion rulesets where the org permits.
@@ -56,6 +60,7 @@ Root README and package README gain a "Installing from GitHub Releases (temporar
 - [Tag/version drift (e.g. tag `v0.1.0-rc2` with `rc_index` defaulting to 1)] → Same early fail-closed; the runbook's dispatch procedure names the expected tag for each channel.
 - [gh CLI version drift on the runner image] → The digest-compare and no-op paths use stable `gh release` JSON fields; acceptable for a temporary bridge.
 - [Bridge quietly becomes permanent] → The exit condition is a spec requirement and a runbook section; the bridge marker block in the workflow names the restore procedure.
+- [URL consumer test or digest check fails after upload — a bad release is briefly public] → The run fails closed; the runbook directs the operator to delete the failed release or re-dispatch the correction (spec'd in `Release-URL consumer verification`).
 - [Commented YAML is not parser-validated] → The restore procedure is exercised by the exit change's own gate run; the self-check still validates the live bridge shape.
 
 ## Migration Plan
@@ -64,7 +69,7 @@ Root README and package README gain a "Installing from GitHub Releases (temporar
 2. Dry-run reconciliation locally: create a scratch tag, run the new step logic against it for match/mismatch cases; delete the scratch tag.
 3. First bridge dispatch (operator, after merge): create and push `v0.1.0-rc1` on the release commit, dispatch `channel=rc` from the permitted branch, verify prerelease assets, checksums, attestations, and the URL consumer test in the run.
 4. Rollback (any time): the bridge is additive to git history — reverting the change's commits restores the npm path verbatim; existing releases remain as inert artifacts until deleted by an admin.
-5. Exit (token granted): first `release`-channel npmjs publication succeeds → single follow-up change uncomments steps 4/10/12–15, removes bridge steps and the `github-release-distribution` requirements, updates docs.
+5. Exit (token granted): first `release`-channel npmjs publication succeeds → single follow-up change uncomments steps 4/10/12–15, restores the scoped `npm-publication` and `repository-toolchain` requirements to unconditional form, removes bridge steps and the `github-release-distribution` requirements, updates docs.
 
 ## Open Questions
 

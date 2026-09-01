@@ -6,7 +6,7 @@ Defines the temporary GitHub-Release distribution bridge for the digital-passpor
 
 ### Requirement: Bridge window suspends npmjs publication
 
-While the bridge is active, the publication workflow SHALL distribute releases as GitHub Releases instead of publishing to the npmjs registry: the registry-publication, dist-tag snapshot/verification, propagation-wait, and registry-mode consumer-test steps SHALL be suspended, and the suspension SHALL be recoverable — the suspended steps SHALL remain present (commented) with restore instructions, and the workflow SHALL keep its registry configuration locked to the public npmjs registry (the dependency source during install). The bridge SHALL NOT introduce any second package registry target. The base versioning, pre-publication gate, packing, contract check, tarball consumer test, and SBOM generation behavior SHALL be unchanged by the bridge.
+While the bridge is active, the publication workflow SHALL distribute releases as GitHub Releases instead of publishing to the npmjs registry (the registry-facing `npm-publication` requirements are scoped accordingly for the duration of the window): the registry-publication, dist-tag snapshot/verification, propagation-wait, and registry-mode consumer-test steps SHALL be suspended, and the suspension SHALL be recoverable — the suspended steps SHALL remain present (commented) with restore instructions, and the workflow SHALL keep its registry configuration locked to the public npmjs registry (the dependency source during install). The bridge SHALL NOT introduce any second package registry target. The base versioning, pre-publication gate, packing, contract check, tarball consumer test, and SBOM generation behavior SHALL be unchanged by the bridge.
 
 #### Scenario: Bridge run performs no registry publication
 
@@ -77,7 +77,7 @@ Each bridged release SHALL attach the tested tarball under its standard packed f
 
 ### Requirement: Release-URL consumer verification
 
-After uploading the release assets, the workflow SHALL run a clean-consumer installation test that installs the package from the actual release-download URL of the just-published release — resolving its dependencies from the public npmjs registry — and exercises the consumer round-trip. Only a release whose URL-installed package passes the round-trip SHALL be left published.
+After uploading the release assets, the workflow SHALL run a clean-consumer installation test that installs the package from the actual release-download URL of the just-published release — resolving its dependencies from the public npmjs registry — and exercises the consumer round-trip. A failed round-trip SHALL fail the run, and the publication runbook SHALL direct the operator to delete the failed release or re-dispatch a corrected publication, so that no release whose URL-installed package failed the round-trip remains published.
 
 #### Scenario: Clean consumer installs from the release URL
 
@@ -105,7 +105,7 @@ The repository SHALL document, for any downstream repository, how to consume the
 
 ### Requirement: Security self-check bridge contract
 
-The CI-enforced workflow self-check SHALL assert the bridged publication workflow's exact permission grant — `contents: write`, `id-token: write`, `attestations: write` — and SHALL continue to assert manual dispatch only, the channel/branch gate before any build step, the registry lock, absence of template interpolation inside run scripts, full-SHA action pinning, and checkout credential hygiene. The self-check SHALL fail on a mutated workflow that widens these permissions or weakens any preserved property.
+The CI-enforced workflow self-check SHALL assert the bridged publication workflow's exact permission grant — `contents: write`, `id-token: write`, `attestations: write` — and SHALL continue to assert manual dispatch only, the channel/branch gate before any build step, the registry lock, absence of template interpolation inside run scripts, full-SHA action pinning, and checkout credential hygiene. The self-check SHALL fail on a mutated workflow that widens these permissions or weakens any preserved property. The `repository-toolchain` self-check clause over the publication workflow is scoped for the bridge window accordingly (see the `repository-toolchain` delta), so both capabilities pin the same bridge shape.
 
 #### Scenario: Widened permissions fail the self-check
 
@@ -119,7 +119,7 @@ The CI-enforced workflow self-check SHALL assert the bridged publication workflo
 
 ### Requirement: Bridge exit condition
 
-The publication runbook SHALL record the bridge's exit condition and procedure: once the npm automation token is available and the first `release`-channel npmjs publication succeeds, a single follow-up change SHALL restore the commented npmjs steps, remove the bridge steps and their capability requirements, and update the consumer documentation — returning npmjs to the sole distribution channel. Until that exit, the bridge SHALL remain the documented publication path; it SHALL NOT silently persist as a second channel.
+The publication runbook SHALL record the bridge's exit condition and procedure: once the npm automation token is available and the first `release`-channel npmjs publication succeeds, a single follow-up change SHALL restore the commented npmjs steps, restore the scoped `npm-publication` and `repository-toolchain` requirements to their unconditional form, remove the bridge steps and their capability requirements, and update the consumer documentation — returning npmjs to the sole distribution channel. Until that exit, the bridge SHALL remain the documented publication path; it SHALL NOT silently persist as a second channel.
 
 #### Scenario: Runbook names the exit
 

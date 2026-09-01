@@ -9,5 +9,5 @@ export type Config = {
 return {
 	defaultModel = "zai/glm-5.3",
 	judgeModel = "zai/glm-5.3-flash",
-	changeName = "add-npm-release-pipeline",
+	changeName = "add-github-release-tgz-bridge",
 } :: Config
