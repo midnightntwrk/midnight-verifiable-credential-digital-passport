@@ -23,7 +23,7 @@
 // consumer-test argument validation. Everything runs offline: registry views
 // are mocked and tarballs are fixtures.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -46,12 +46,13 @@ import assert from "node:assert/strict";
 import {
   assertBaseVersionAgreement,
   computeReleaseVersion,
+  expectedReleaseTag,
 } from "./prepare-release-version.mjs";
 import { contractViolations } from "./check-release-package-contract.mjs";
 import { catalogViolations, workspaceCatalog } from "./workspace-catalog.mjs";
 import { parseConsumerArgs, readTarballManifest } from "./test-release-package-consumers.mjs";
 import { packageVerificationCode } from "./generate-release-sbom.mjs";
-import { assertPublishWorkflow } from "./check-security-workflows.mjs";
+import { assertPublishWorkflow, externalActionPinningViolations } from "./check-security-workflows.mjs";
 import { parse as parseYaml } from "yaml";
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
@@ -346,7 +347,10 @@ test("release-resolve-context: dispatch-only enforcement and channel/branch rule
     ["rc from develop", "workflow_dispatch", "refs/heads/develop", ["--channel", "rc", "--rc-index", "1"], 0],
     ["rc from main", "workflow_dispatch", "refs/heads/main", ["--channel", "rc", "--rc-index", "2"], 0],
     ["release from main", "workflow_dispatch", "refs/heads/main", ["--channel", "release"], 0],
-    ["snapshot from develop", "workflow_dispatch", "refs/heads/develop", ["--channel", "snapshot"], 0],
+    // BRIDGE (temporary): snapshot fails closed on every branch (run-number-
+    // stamped versions cannot be operator-tagged); the branch rule below it
+    // stays intact for the bridge exit.
+    ["snapshot from develop rejected (bridge)", "workflow_dispatch", "refs/heads/develop", ["--channel", "snapshot"], 1],
     ["snapshot from main rejected", "workflow_dispatch", "refs/heads/main", ["--channel", "snapshot"], 1],
     ["release from develop rejected", "workflow_dispatch", "refs/heads/develop", ["--channel", "release"], 1],
     ["rc from feature branch rejected", "workflow_dispatch", "refs/heads/feat/x", ["--channel", "rc"], 1],
@@ -365,6 +369,32 @@ test("release-resolve-context: dispatch-only enforcement and channel/branch rule
     const result = resolveContext({ GITHUB_EVENT_NAME: event, GITHUB_REF: ref }, args);
     assert.equal(result.status, expectedExit, `${name}: ${result.stdout} ${result.stderr}`);
   }
+});
+
+test("release-resolve-context: snapshot rejection names the bridge restriction (pre-build)", () => {
+  // BRIDGE (temporary): the failure must carry the bridge-specific message
+  // (not the generic branch rule) so the operator knows why — and the channel
+  // input itself keeps offering snapshot|rc|release (checker-pinned).
+  const rejected = resolveContext(
+    { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/heads/develop" },
+    ["--channel", "snapshot"],
+  );
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /not available during the GitHub-Release bridge/u);
+  assert.match(rejected.stderr, /cannot be pre-tagged/u);
+
+  // rc/release are unaffected by the guard.
+  const rc = resolveContext(
+    { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/heads/develop" },
+    ["--channel", "rc", "--rc-index", "1"],
+  );
+  assert.equal(rc.status, 0, rc.stderr);
+  assert.doesNotMatch(rc.stdout + rc.stderr, /bridge/u);
+  const release = resolveContext(
+    { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: "refs/heads/main" },
+    ["--channel", "release"],
+  );
+  assert.equal(release.status, 0, release.stderr);
 });
 
 test("release-resolve-context: emits the publication context", () => {
@@ -390,6 +420,236 @@ test("release-resolve-context: emits the publication context", () => {
   } finally {
     rmSync(output, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Release tag reconciliation (GitHub-Release bridge)
+// ---------------------------------------------------------------------------
+
+/**
+ * A sandboxed git repo carrying the tooling scripts and agreeing manifests,
+ * with one initial commit on HEAD. Returns the sandbox and its HEAD sha.
+ */
+const makeTagSandbox = () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), "release-tag-sandbox-"));
+  mkdirSync(path.join(sandbox, FAMILY_PATH), { recursive: true });
+  mkdirSync(path.join(sandbox, "packages", "smoke-consumer"), { recursive: true });
+  cpSync(SCRIPTS, path.join(sandbox, "tooling", "scripts"), { recursive: true });
+  writeFileSync(
+    path.join(sandbox, "package.json"),
+    `${JSON.stringify({ name: "sandbox-root", version: "0.1.0", private: true }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(sandbox, FAMILY_PATH, "package.json"),
+    `${JSON.stringify(
+      { name: FAMILY, version: "0.1.0", private: false },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(
+    path.join(sandbox, "packages", "smoke-consumer", "package.json"),
+    `${JSON.stringify({ name: "smoke-consumer", version: "0.0.0", private: true }, null, 2)}\n`,
+  );
+  execFileSync("git", ["init", "-q"], { cwd: sandbox });
+  execFileSync("git", ["add", "-A"], { cwd: sandbox });
+  execFileSync(
+    "git",
+    ["-c", "user.name=Release Tooling Test", "-c", "user.email=tooling@test.invalid", "commit", "-qm", "initial"],
+    { cwd: sandbox },
+  );
+  const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: sandbox, encoding: "utf8" }).trim();
+  return { sandbox, sha };
+};
+
+const tagScriptIn = (sandbox) => path.join(sandbox, "tooling", "scripts", "verify-release-tag.mjs");
+
+test("verify-release-tag: the happy path reconciles a tag at the dispatch commit", () => {
+  const { sandbox, sha } = makeTagSandbox();
+  try {
+    execFileSync("git", ["tag", "v0.1.0-rc1"], { cwd: sandbox });
+    const result = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--rc-index",
+      "1",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /reconciled/u);
+
+    // An annotated tag peels to the same commit and reconciles too.
+    execFileSync(
+      "git",
+      ["-c", "user.name=Release Tooling Test", "-c", "user.email=tooling@test.invalid", "tag", "-a", "-m", "v0.1.0", "v0.1.0"],
+      { cwd: sandbox },
+    );
+    const annotated = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "release",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(annotated.status, 0, annotated.stderr);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify-release-tag: missing tag fails closed before anything else", () => {
+  const { sandbox, sha } = makeTagSandbox();
+  try {
+    const result = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /does not exist in the repository/u);
+    assert.match(result.stderr, /create and push/u);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify-release-tag: a tag on the wrong commit fails closed", () => {
+  const { sandbox, sha } = makeTagSandbox();
+  try {
+    // A second commit: the tag marks it, but the dispatch was made from the
+    // first commit — the reconciliation must name both shas.
+    writeFileSync(path.join(sandbox, "second.txt"), "second commit\n");
+    execFileSync("git", ["add", "-A"], { cwd: sandbox });
+    execFileSync(
+      "git",
+      ["-c", "user.name=Release Tooling Test", "-c", "user.email=tooling@test.invalid", "commit", "-qm", "second"],
+      { cwd: sandbox },
+    );
+    execFileSync("git", ["tag", "v0.1.0-rc1"], { cwd: sandbox });
+    const result = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--rc-index",
+      "1",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /points at commit [0-9a-f]{40} but the dispatch commit is/u);
+    // The name itself reconciles; only the commit mismatches.
+    assert.doesNotMatch(result.stderr, /does not match the resolved channel version/u);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify-release-tag: tag/version drift fails closed", () => {
+  const { sandbox, sha } = makeTagSandbox();
+  try {
+    // The tag exists at the dispatch commit, but rc_index defaults to 1 —
+    // v0.1.0-rc2 is the wrong version for this dispatch.
+    execFileSync("git", ["tag", "v0.1.0-rc2"], { cwd: sandbox });
+    const result = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0-rc2",
+      "--channel",
+      "rc",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /does not match the resolved channel version \(expected 'v0\.1\.0-rc1'/u);
+
+    // The correct rc_index reconciles the same tag.
+    const ok = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0-rc2",
+      "--channel",
+      "rc",
+      "--rc-index",
+      "2",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(ok.status, 0, ok.stderr);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify-release-tag: snapshot and malformed inputs fail closed", () => {
+  const { sandbox, sha } = makeTagSandbox();
+  try {
+    const snapshot = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "snapshot",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(snapshot.status, 1);
+    assert.match(snapshot.stderr, /not available during the GitHub-Release bridge/u);
+
+    const noTag = node([tagScriptIn(sandbox), "--channel", "rc", "--sha", sha]);
+    assert.equal(noTag.status, 1);
+    assert.match(noTag.stderr, /--tag is required/u);
+
+    const unknown = node([tagScriptIn(sandbox), "--tag", "v0.1.0", "--channel", "rc", "--wat"]);
+    assert.equal(unknown.status, 1);
+    assert.match(unknown.stderr, /unknown argument/u);
+
+    execFileSync("git", ["tag", "v0.1.0"], { cwd: sandbox });
+    const noSha = node([tagScriptIn(sandbox), "--tag", "v0.1.0", "--channel", "release"], {
+      env: { ...process.env, GITHUB_SHA: "" },
+    });
+    assert.equal(noSha.status, 1);
+    assert.match(noSha.stderr, /no dispatch commit/u);
+
+    // The manifest base version is the source of truth: a disagreeing
+    // --base-version confirmation fails closed (the tag exists and points at
+    // HEAD, so the disagreement is the only violation).
+    const disagreed = node([
+      tagScriptIn(sandbox),
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "release",
+      "--base-version",
+      "9.9.9",
+      "--sha",
+      sha,
+    ]);
+    assert.equal(disagreed.status, 1);
+    assert.match(disagreed.stderr, /disagrees with the manifest base version/u);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify-release-tag: the tag scheme is shared with prepare-release-version", () => {
+  // The reconciliation imports the scheme (never duplicating it): the
+  // exported helper must reject snapshot and derive the same tags the
+  // version computation produces.
+  assert.equal(expectedReleaseTag({ channel: "release", baseVersion: "0.2.0" }), "v0.2.0");
+  assert.equal(expectedReleaseTag({ channel: "rc", baseVersion: "0.2.0", rcIndex: 7 }), "v0.2.0-rc7");
+  assert.throws(() => expectedReleaseTag({ channel: "snapshot", baseVersion: "0.2.0" }), /cannot be pre-tagged/u);
 });
 
 // ---------------------------------------------------------------------------
@@ -668,6 +928,83 @@ test("release package contract: a stripped tarball fails", () => {
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+});
+
+test("release package contract: emits a deterministic machine-readable report on pass and failure", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "contract-report-"));
+  try {
+    const tarball = makeFixtureTarball(work);
+    const reportFile = path.join(work, "contract-report.json");
+    const pass = node([
+      path.join(SCRIPTS, "check-release-package-contract.mjs"),
+      "--tarball",
+      tarball,
+      "--report",
+      reportFile,
+    ]);
+    assert.equal(pass.status, 0, pass.stderr);
+    const firstBytes = readFileSync(reportFile, "utf8");
+    const report = JSON.parse(firstBytes);
+    assert.equal(report.result, "pass");
+    assert.equal(report.version, "0.1.0");
+    assert.deepEqual(report.tarballs, [
+      {
+        tarball: "midnight-ntwrk-midnight-verifiable-credential-digital-passport-0.1.0.tgz",
+        passed: true,
+        violations: [],
+      },
+    ]);
+    assert.match(pass.stdout, /report written to .*contract-report\.json/u);
+
+    // Deterministic content: a rerun over the same inputs produces identical
+    // bytes (no timestamps, stable ordering, stable key order).
+    node([
+      path.join(SCRIPTS, "check-release-package-contract.mjs"),
+      "--tarball",
+      tarball,
+      "--report",
+      reportFile,
+    ]);
+    assert.equal(readFileSync(reportFile, "utf8"), firstBytes);
+
+    // The failure path emits the report too (before exiting 1) — the release
+    // evidence carries which check failed, per tarball.
+    const stripped = makeFixtureTarball(work, {
+      version: "0.2.0",
+      mutate: (pkg) => {
+        rmSync(path.join(pkg, "CHANGELOG.md"));
+      },
+    });
+    const failure = node([
+      path.join(SCRIPTS, "check-release-package-contract.mjs"),
+      "--tarball",
+      stripped,
+      "--report",
+      reportFile,
+    ]);
+    assert.equal(failure.status, 1, failure.stdout);
+    const failureReport = JSON.parse(readFileSync(reportFile, "utf8"));
+    assert.equal(failureReport.result, "fail");
+    assert.equal(failureReport.version, "0.2.0");
+    assert.equal(failureReport.tarballs[0].passed, false);
+    assert.ok(
+      failureReport.tarballs[0].violations.some((violation) =>
+        violation.includes("CHANGELOG.md is missing"),
+      ),
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("release package contract: the default report path lands inside tooling/artifacts/", () => {
+  // The workflow's evidence-artifact upload globs tooling/artifacts/ and the
+  // GitHub-Release bridge attaches the report as a release asset: the
+  // artifacts-dir (release) path must write it there — while an ad-hoc
+  // --tarball check stays side-effect-free.
+  const source = readFileSync(path.join(SCRIPTS, "check-release-package-contract.mjs"), "utf8");
+  assert.match(source, /join\(repoRoot, "tooling", "artifacts", "contract-report\.json"\)/u);
+  assert.match(source, /reportPathArg \?\? \(tarballMode \? null : DEFAULT_REPORT_PATH\)/u);
 });
 
 test("release package contract: managed source maps and dist gaps fail", () => {
@@ -1022,6 +1359,196 @@ test("test-release-package-consumers: registry-mode argument validation", () => 
   assert.deepEqual(parseConsumerArgs([]).mode, "tarball");
 });
 
+test("test-release-package-consumers: release-url argument validation (BRIDGE)", () => {
+  const RELEASE_ASSET =
+    "https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/releases/download/v0.1.0-rc1/midnight-ntwrk-midnight-verifiable-credential-digital-passport-0.1.0-rc1.tgz";
+  assert.deepEqual(parseConsumerArgs(["--release-url", RELEASE_ASSET]).mode, "release-url");
+  // Plain http is only for localhost test harnesses.
+  assert.deepEqual(
+    parseConsumerArgs(["--release-url", "http://127.0.0.1:8080/asset.tgz"]).mode,
+    "release-url",
+  );
+  assert.deepEqual(
+    parseConsumerArgs(["--release-url", "http://localhost:8080/asset.tgz"]).mode,
+    "release-url",
+  );
+  assert.throws(() => parseConsumerArgs(["--release-url", "http://example.com/asset.tgz"]), /https/u);
+  assert.throws(() => parseConsumerArgs(["--release-url", "https://example.com/asset.tar"]), /\.tgz/u);
+  assert.throws(() => parseConsumerArgs(["--release-url", "not a url"]), /must be a URL/u);
+  assert.throws(
+    () =>
+      parseConsumerArgs([
+        "--release-url",
+        RELEASE_ASSET,
+        "--registry",
+        NPMJS,
+        "--version",
+        "0.1.0",
+      ]),
+    /cannot be combined/u,
+  );
+  assert.throws(
+    () => parseConsumerArgs(["--release-url", RELEASE_ASSET, "--artifacts-dir", "/tmp"]),
+    /cannot be combined/u,
+  );
+});
+
+test("test-release-package-consumers: release-url mode round-trips against a local HTTP-served tarball", async () => {
+  const work = mkdtempSync(path.join(tmpdir(), "consumer-release-url-"));
+  const tarballPath = makeFixtureTarball(work, { version: "0.1.0-rc1" });
+  const tarballBytes = readFileSync(tarballPath);
+  const expectedSha = createHash("sha256").update(tarballBytes).digest("hex");
+  // The asset server runs as its own process (a sibling of the spawned
+  // consumer script, mirroring how CI serves a real release download).
+  const assetPath = `/${path.basename(tarballPath)}`;
+  const serverScript = path.join(work, "asset-server.mjs");
+  writeFileSync(
+    serverScript,
+    `${[
+      "import http from 'node:http';",
+      "import { readFileSync } from 'node:fs';",
+      `const bytes = readFileSync(${JSON.stringify(tarballPath)});`,
+      `const assetPath = ${JSON.stringify(assetPath)};`,
+      "const server = http.createServer((request, response) => {",
+      "  if (request.url === assetPath) {",
+      "    response.writeHead(200, { 'content-type': 'application/gzip' });",
+      "    response.end(bytes);",
+      "  } else {",
+      "    response.writeHead(404);",
+      "    response.end();",
+      "  }",
+      "});",
+      "server.listen(0, '127.0.0.1', () => { process.stdout.write(String(server.address().port)); });",
+    ].join("\n")}\n`,
+  );
+  const server = spawn("node", [serverScript], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    const port = await new Promise((resolve, reject) => {
+      server.stdout.once("data", (chunk) => resolve(String(chunk).trim()));
+      server.once("error", reject);
+    });
+    const url = `http://127.0.0.1:${port}${assetPath}`;
+
+    // A mockable `pnpm` (the makeLaggingNpm pattern): `add <url> <network-id>`
+    // fetches the URL — proving the harness installs from the served release
+    // asset, bytes verified by digest — and places the extracted package into
+    // the clean project's node_modules, exactly where the round-trip looks.
+    const binDir = path.join(work, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const installLog = path.join(work, "install.log");
+    writeFileSync(installLog, "");
+    const installer = path.join(work, "mock-pnpm-install.mjs");
+    writeFileSync(
+      installer,
+      `${[
+        "import { execFileSync } from 'node:child_process';",
+        "import { createHash } from 'node:crypto';",
+        "import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, cpSync } from 'node:fs';",
+        "import { tmpdir } from 'node:os';",
+        "import path from 'node:path';",
+        "const args = process.argv.slice(2);",
+        "const url = args.find((argument) => argument.startsWith('http'));",
+        "if (!url) { throw new Error('no URL in ' + JSON.stringify(args)); }",
+        "const response = await fetch(url);",
+        "if (!response.ok) { throw new Error('server returned ' + response.status); }",
+        "const bytes = Buffer.from(await response.arrayBuffer());",
+        "const digest = createHash('sha256').update(bytes).digest('hex');",
+        "if (digest !== process.env.MOCK_EXPECTED_SHA) { throw new Error('served bytes drifted from the fixture tarball'); }",
+        "const extract = mkdtempSync(path.join(tmpdir(), 'release-url-extract-'));",
+        "writeFileSync(path.join(extract, 'asset.tgz'), bytes);",
+        "execFileSync('tar', ['-xzf', path.join(extract, 'asset.tgz'), '-C', extract]);",
+        "const manifest = JSON.parse(readFileSync(path.join(extract, 'package', 'package.json'), 'utf8'));",
+        "const target = path.join(process.cwd(), 'node_modules', manifest.name);",
+        "mkdirSync(target, { recursive: true });",
+        "cpSync(path.join(extract, 'package'), target, { recursive: true });",
+        "rmSync(extract, { recursive: true, force: true });",
+      ].join("\n")}\n`,
+    );
+    const shim = path.join(binDir, "pnpm");
+    writeFileSync(
+      shim,
+      `${[
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'if [ "${1:-}" = "add" ]; then',
+        "  shift",
+        '  printf \'%s\\n\' "$*" >> "${MOCK_PNPM_LOG}"',
+        '  exec node "${MOCK_PNPM_INSTALL}" "$@"',
+        "else",
+        '  echo "unsupported pnpm subcommand: $*" >&2',
+        "  exit 1",
+        "fi",
+      ].join("\n")}\n`,
+    );
+    chmodSync(shim, 0o755);
+
+    // A stub round-trip (RELEASE_CONSUMER_ROUND_TRIP test hook) that verifies
+    // the installed package landed in the clean project from the served URL.
+    const stubRoundTrip = path.join(work, "stub-round-trip.mjs");
+    writeFileSync(
+      stubRoundTrip,
+      `${[
+        "import { readFileSync } from 'node:fs';",
+        `const manifest = JSON.parse(readFileSync('node_modules/${FAMILY}/package.json', 'utf8'));`,
+        `if (manifest.name !== ${JSON.stringify(FAMILY)}) { throw new Error('installed ' + manifest.name); }`,
+        `if (manifest.version !== '0.1.0-rc1') { throw new Error('installed ' + manifest.version); }`,
+        "console.log('stub round-trip: installed manifest reconciles');",
+      ].join("\n")}\n`,
+    );
+
+    const result = node(
+      [path.join(SCRIPTS, "test-release-package-consumers.mjs"), "--release-url", url],
+      {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          MOCK_PNPM_LOG: installLog,
+          MOCK_PNPM_INSTALL: installer,
+          MOCK_EXPECTED_SHA: expectedSha,
+          RELEASE_CONSUMER_ROUND_TRIP: stubRoundTrip,
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /release-url consumer: PASS/u);
+    assert.match(result.stdout, /stub round-trip/u);
+    const installArgs = readFileSync(installLog, "utf8");
+    assert.ok(
+      installArgs.includes(url),
+      `the install must reference the release URL (got: ${installArgs.trim()})`,
+    );
+    assert.ok(
+      installArgs.includes("@midnight-ntwrk/midnight-js-network-id"),
+      "the install must add the network-id helper alongside the URL dependency",
+    );
+
+    // The mode proves the channel end-to-end: a 404 URL must fail the run,
+    // not silently skip the install.
+    const broken = node(
+      [
+        path.join(SCRIPTS, "test-release-package-consumers.mjs"),
+        "--release-url",
+        `http://127.0.0.1:${port}/missing.tgz`,
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          MOCK_PNPM_LOG: installLog,
+          MOCK_PNPM_INSTALL: installer,
+          MOCK_EXPECTED_SHA: expectedSha,
+          RELEASE_CONSUMER_ROUND_TRIP: stubRoundTrip,
+        },
+      },
+    );
+    assert.notEqual(broken.status, 0);
+    assert.match(broken.stderr + broken.stdout, /server returned 404|exited with status/u);
+  } finally {
+    server.kill();
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 test("test-release-package-consumers: tarball installs use a short relative path (ENAMETOOLONG guard)", () => {
   const source = readFileSync(
     path.join(SCRIPTS, "test-release-package-consumers.mjs"),
@@ -1197,6 +1724,360 @@ test("generate-release-sbom: tarballs never contaminate each other's verificatio
 });
 
 // ---------------------------------------------------------------------------
+// GitHub-Release publication (bridge): sums, body, create/no-op/drift
+// ---------------------------------------------------------------------------
+
+/** A mockable `gh` for the release-publication script: `create`/`upload`
+ * record their command line and hash the files they receive (cwd = artifacts
+ * dir); `view` serves the recorded state, so a rerun after create naturally
+ * no-ops unless the state is mutated. */
+const MOCK_GH = (dir) => {
+  const script = path.join(dir, "mock-gh.mjs");
+  writeFileSync(
+    script,
+    `${[
+      "import { createHash } from 'node:crypto';",
+      "import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';",
+      "import path from 'node:path';",
+      "const args = process.argv.slice(2);",
+      "const [, sub, tag] = args;",
+      "const stateFile = process.env.MOCK_GH_STATE;",
+      "const logFile = process.env.MOCK_GH_LOG;",
+      "const readState = () =>",
+      "  existsSync(stateFile)",
+      "    ? JSON.parse(readFileSync(stateFile, 'utf8'))",
+      "    : { exists: false, assets: [] };",
+      "const save = (state) => writeFileSync(stateFile, JSON.stringify(state));",
+      "const filesOf = (rest) => {",
+      "  const files = [];",
+      "  while (rest.length > 0 && !rest[0].startsWith('--')) files.push(rest.shift());",
+      "  return files;",
+      "};",
+      "const resolveAsset = (name) => {",
+      "  const candidates = [name, `sbom/${name}`, `npm/${name}`];",
+      "  const found = candidates.find((candidate) => existsSync(path.resolve(process.cwd(), candidate)));",
+      "  if (!found) throw new Error('no such asset on disk: ' + name);",
+      "  return path.resolve(process.cwd(), found);",
+      "};",
+      "const digestOf = (file) =>",
+      "  'sha256:' + createHash('sha256').update(readFileSync(resolveAsset(file))).digest('hex');",
+      "const assetFiles = (allArgs) => filesOf(allArgs.slice(3));",
+      "if (sub === 'view') {",
+      "  const state = readState();",
+      "  if (!state.exists || state.tag !== tag) { console.error('release not found'); process.exit(1); }",
+      "  console.log(JSON.stringify({ assets: state.assets, isPrerelease: state.isPrerelease, isLatest: state.isLatest }));",
+      "} else if (sub === 'create') {",
+      "  appendFileSync(logFile, JSON.stringify(args) + '\\n');",
+      "  const files = assetFiles(args);",
+      "  const isPrerelease = args.includes('--prerelease');",
+      "  save({",
+      "    exists: true,",
+      "    tag,",
+      "    assets: files.map((file) => ({ name: path.basename(file), digest: digestOf(file) })),",
+      "    isPrerelease,",
+      "    isLatest: !isPrerelease,",
+      "  });",
+      "} else if (sub === 'upload') {",
+      "  appendFileSync(logFile, JSON.stringify(args) + '\\n');",
+      "  const files = assetFiles(args);",
+      "  const state = readState();",
+      "  state.assets.push(",
+      "    ...files.map((file) => ({ name: path.basename(file), digest: digestOf(file) })),",
+      "  );",
+      "  save(state);",
+      "} else {",
+      "  console.error('unsupported gh subcommand: ' + sub);",
+      "  process.exit(1);",
+      "}",
+    ].join("\n")}\n`,
+  );
+  return script;
+};
+
+/** A minimal release artifact set: tarball, SBOM, and contract report. */
+const makeBridgeArtifacts = (dir, { version = "0.1.0-rc1" } = {}) => {
+  const npmDir = path.join(dir, "npm");
+  const sbomDir = path.join(dir, "sbom");
+  mkdirSync(npmDir, { recursive: true });
+  mkdirSync(sbomDir, { recursive: true });
+  const tarball = makeFixtureTarball(npmDir, { version });
+  const sbomName = `${path.basename(tarball).replace(/\.tgz$/u, "")}.spdx.json`;
+  writeFileSync(
+    path.join(sbomDir, sbomName),
+    `${JSON.stringify({ spdxVersion: "SPDX-2.3", packages: [{ name: FAMILY, versionInfo: version }] }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(dir, "contract-report.json"),
+    `${JSON.stringify({ result: "pass", version, tarballs: [{ tarball: path.basename(tarball), passed: true, violations: [] }] }, null, 2)}\n`,
+  );
+  return { tarball, sbomName };
+};
+
+test("publish-github-release: prepare writes deterministic SHA256SUMS and body", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-gh-prepare-"));
+  try {
+    const { tarball, sbomName } = makeBridgeArtifacts(work);
+    const prepared = node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "prepare",
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--repo",
+      "midnightntwrk/midnight-verifiable-credential-digital-passport",
+      "--artifacts-dir",
+      work,
+    ]);
+    assert.equal(prepared.status, 0, prepared.stderr);
+
+    const sumsPath = path.join(work, "SHA256SUMS");
+    const first = readFileSync(sumsPath, "utf8");
+    const entries = first.trim().split("\n");
+    assert.equal(entries.length, 3, "sums cover tarball + SBOM + contract report");
+    const names = entries.map((entry) => entry.split(/\s+/u)[1]);
+    assert.deepEqual(names, [names[0], ...names.slice(1)].sort());
+    assert.ok(names.includes(path.basename(tarball)));
+    assert.ok(names.includes(sbomName));
+    assert.ok(names.includes("contract-report.json"));
+    for (const entry of entries) {
+      const [digest, name] = entry.split(/\s+/u);
+      const onDisk = ["SHA256SUMS", "contract-report.json"].includes(name)
+        ? path.join(work, name)
+        : name.endsWith(".spdx.json")
+          ? path.join(work, "sbom", name)
+          : path.join(work, "npm", name);
+      assert.equal(
+        digest,
+        createHash("sha256").update(readFileSync(onDisk)).digest("hex"),
+        `${name} digest must match its bytes`,
+      );
+    }
+
+    const body = readFileSync(path.join(work, "release-body.md"), "utf8");
+    assert.match(body, /0\.1\.0-rc1 \(rc\)/u);
+    assert.match(
+      body,
+      /https:\/\/github\.com\/midnightntwrk\/midnight-verifiable-credential-digital-passport\/releases\/download\/v0\.1\.0-rc1\/midnight-ntwrk-midnight-verifiable-credential-digital-passport-0\.1\.0-rc1\.tgz/u,
+    );
+    assert.match(body, /sha256sum --check SHA256SUMS/u);
+    assert.match(body, /gh attestation verify --repo midnightntwrk\/midnight-verifiable-credential-digital-passport/u);
+    assert.match(body, /\/CHANGELOG\.md\)/u);
+
+    // Deterministic: a rerun produces identical bytes.
+    node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "prepare",
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--repo",
+      "midnightntwrk/midnight-verifiable-credential-digital-passport",
+      "--artifacts-dir",
+      work,
+    ]);
+    assert.equal(readFileSync(sumsPath, "utf8"), first);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("publish-github-release: publish creates an rc prerelease, then reruns as a verified no-op", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-gh-publish-"));
+  try {
+    makeBridgeArtifacts(work);
+    const mockGh = MOCK_GH(work);
+    const stateFile = path.join(work, "gh-state.json");
+    const logFile = path.join(work, "gh.log");
+    writeFileSync(logFile, "");
+    const output = path.join(work, "github-output");
+    const env = {
+      ...process.env,
+      GH_COMMAND: `node ${mockGh}`,
+      MOCK_GH_STATE: stateFile,
+      MOCK_GH_LOG: logFile,
+      GH_TOKEN: "dummy",
+    };
+    const runPublish = (extra = []) =>
+      node(
+        [
+          path.join(SCRIPTS, "publish-github-release.mjs"),
+          "publish",
+          "--tag",
+          "v0.1.0-rc1",
+          "--channel",
+          "rc",
+          "--repo",
+          "midnightntwrk/midnight-verifiable-credential-digital-passport",
+          "--artifacts-dir",
+          work,
+          ...extra,
+        ],
+        { env },
+      );
+
+    // prepare must run first: publish without sums fails closed.
+    const unprepared = runPublish();
+    assert.equal(unprepared.status, 1, "publish before prepare must fail");
+    assert.match(unprepared.stderr, /SHA256SUMS is missing/u);
+
+    node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "prepare",
+      "--tag",
+      "v0.1.0-rc1",
+      "--channel",
+      "rc",
+      "--repo",
+      "midnightntwrk/midnight-verifiable-credential-digital-passport",
+      "--artifacts-dir",
+      work,
+    ]);
+
+    const created = runPublish(["--github-output", output]);
+    assert.equal(created.status, 0, created.stdout + created.stderr);
+    const commands = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const create = commands.find((command) => command[1] === "create");
+    assert.ok(create, "the release must be created");
+    assert.ok(create.includes("--prerelease"), "rc creates a prerelease (never latest)");
+    assert.ok(!create.includes("--latest"));
+    assert.ok(create.includes("--verify-tag"), "create must not move the operator tag");
+    assert.ok(create.includes("release-body.md"), "create attaches the generated body");
+    for (const asset of ["SHA256SUMS", "contract-report.json"]) {
+      assert.ok(create.includes(asset), `create must upload ${asset}`);
+    }
+    assert.match(created.stdout, /release-url=https:\/\/github\.com\/midnightntwrk\/midnight-verifiable-credential-digital-passport\/releases\/download\/v0\.1\.0-rc1\/midnight-ntwrk-midnight-verifiable-credential-digital-passport-0\.1\.0-rc1\.tgz/u);
+    assert.match(readFileSync(output, "utf8"), /^release-url=https:\/\//u);
+
+    // Idempotent rerun: identical assets → verified no-op, no second create/upload.
+    const rerun = runPublish();
+    assert.equal(rerun.status, 0, rerun.stdout + rerun.stderr);
+    assert.match(rerun.stdout, /no-op/u);
+    const commandsAfter = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(
+      commandsAfter.filter((command) => command[1] === "create" || command[1] === "upload").length,
+      1,
+      "the rerun must not create or upload anything",
+    );
+
+    // Digest drift on an existing asset fails closed (never --clobber).
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    state.assets[0].digest = "sha256:" + "0".repeat(64);
+    writeFileSync(stateFile, JSON.stringify(state));
+    const drifted = runPublish();
+    assert.equal(drifted.status, 1);
+    assert.match(drifted.stderr, /drifted/u);
+    assert.doesNotMatch(readFileSync(logFile, "utf8"), /--clobber/u);
+
+    // Channel semantics on a rerun: restore correct digests for every
+    // asset, then flip isPrerelease — a release wrongly not marked prerelease
+    // must fail for the rc channel.
+    const locationOf = (name) =>
+      ["SHA256SUMS", "contract-report.json"].includes(name)
+        ? path.join(work, name)
+        : name.endsWith(".spdx.json")
+          ? path.join(work, "sbom", name)
+          : path.join(work, "npm", name);
+    const flipped = JSON.parse(readFileSync(stateFile, "utf8"));
+    for (const asset of flipped.assets) {
+      asset.digest =
+        "sha256:" + createHash("sha256").update(readFileSync(locationOf(asset.name))).digest("hex");
+    }
+    flipped.isPrerelease = false;
+    writeFileSync(stateFile, JSON.stringify(flipped));
+    const wrongShape = runPublish();
+    assert.equal(wrongShape.status, 1);
+    assert.match(wrongShape.stderr, /isPrerelease/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("publish-github-release: a partial upload is completed by a rerun, drift is not", () => {
+  const work = mkdtempSync(path.join(tmpdir(), "release-gh-partial-"));
+  try {
+    makeBridgeArtifacts(work, { version: "0.1.0" });
+    const mockGh = MOCK_GH(work);
+    const stateFile = path.join(work, "gh-state.json");
+    const logFile = path.join(work, "gh.log");
+    writeFileSync(logFile, "");
+    const env = {
+      ...process.env,
+      GH_COMMAND: `node ${mockGh}`,
+      MOCK_GH_STATE: stateFile,
+      MOCK_GH_LOG: logFile,
+      GH_TOKEN: "dummy",
+    };
+    const REPO = "midnightntwrk/midnight-verifiable-credential-digital-passport";
+    node([path.join(SCRIPTS, "publish-github-release.mjs"), "prepare", "--tag", "v0.1.0", "--channel", "release", "--repo", REPO, "--artifacts-dir", work]);
+    const created = node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "publish",
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "release",
+      "--repo",
+      REPO,
+      "--artifacts-dir",
+      work,
+    ], { env });
+    assert.equal(created.status, 0, created.stdout + created.stderr);
+    const createCommand = JSON.parse(readFileSync(logFile, "utf8").trim().split("\n")[0]);
+    assert.ok(createCommand.includes("--latest"), "the release channel marks latest");
+    assert.ok(!createCommand.includes("--prerelease"));
+    // Simulate a partial upload: drop one asset from the recorded state.
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    const dropped = state.assets.pop();
+    writeFileSync(stateFile, JSON.stringify(state));
+    const completed = node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "publish",
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "release",
+      "--repo",
+      REPO,
+      "--artifacts-dir",
+      work,
+    ], { env });
+    assert.equal(completed.status, 0, completed.stdout + completed.stderr);
+    const lines = readFileSync(logFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const upload = lines.find((command) => command[1] === "upload");
+    assert.ok(upload, "the missing asset must be uploaded");
+    assert.deepEqual(upload.slice(3, -2), [dropped.name], "only the missing asset is uploaded (no clobber)");
+    assert.equal(
+      lines.filter((command) => command[1] === "create").length,
+      1,
+      "a rerun never recreates the release",
+    );
+
+    // An unexpected extra asset on the release fails closed as drift.
+    const withExtra = JSON.parse(readFileSync(stateFile, "utf8"));
+    withExtra.assets.push({ name: "planted.tgz", digest: "sha256:" + "1".repeat(64) });
+    writeFileSync(stateFile, JSON.stringify(withExtra));
+    const extra = node([
+      path.join(SCRIPTS, "publish-github-release.mjs"),
+      "publish",
+      "--tag",
+      "v0.1.0",
+      "--channel",
+      "release",
+      "--repo",
+      REPO,
+      "--artifacts-dir",
+      work,
+    ], { env });
+    assert.equal(extra.status, 1);
+    assert.match(extra.stderr, /unexpected asset 'planted\.tgz'/u);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Publication workflow guard (mutation tests for check-security-workflows)
 // ---------------------------------------------------------------------------
 
@@ -1207,7 +2088,7 @@ test("publish workflow guard: the real workflow satisfies the dedicated assertio
   assert.deepEqual(assertPublishWorkflow(workflow, ".github/workflows/publish.yml"), []);
 });
 
-test("publish workflow guard: mutated workflows fail (push trigger, widened permissions, foreign registry, missing gate)", () => {
+test("publish workflow guard: mutated workflows fail (push trigger, widened or narrowed permissions, foreign registry, missing gate)", () => {
   const base = parseYaml(
     readFileSync(path.join(REPO_ROOT, ".github/workflows/publish.yml"), "utf8"),
   );
@@ -1220,15 +2101,33 @@ test("publish workflow guard: mutated workflows fail (push trigger, widened perm
     ),
   );
 
+  // BRIDGE (temporary) permission shape: widened …
   const widened = structuredClone(base);
   widened.jobs.publish.permissions = {
-    contents: "read",
+    contents: "write",
     "id-token": "write",
+    attestations: "write",
     "pull-requests": "write",
   };
   assert.ok(
     assertPublishWorkflow(widened, "publish.yml").some((violation) =>
-      violation.includes("exactly contents: read and id-token: write"),
+      violation.includes("exactly contents: write, id-token: write, and attestations: write"),
+    ),
+  );
+
+  // … and narrowed (a dropped or downgraded grant must fail just the same).
+  const narrowed = structuredClone(base);
+  narrowed.jobs.publish.permissions = { contents: "read", "id-token": "write" };
+  assert.ok(
+    assertPublishWorkflow(narrowed, "publish.yml").some((violation) =>
+      violation.includes("exactly contents: write, id-token: write, and attestations: write"),
+    ),
+  );
+  const noAttestations = structuredClone(base);
+  noAttestations.jobs.publish.permissions = { contents: "write", "id-token": "write" };
+  assert.ok(
+    assertPublishWorkflow(noAttestations, "publish.yml").some((violation) =>
+      violation.includes("attestations: write"),
     ),
   );
 
@@ -1273,56 +2172,101 @@ test("publish workflow guard: mutated workflows fail (push trigger, widened perm
   );
 });
 
-test("publish workflow guard: the npm trusted-publishing gate enforces the full >= 11.5.1 semver", () => {
+test("publish workflow guard: bridge mutations fail (template injection in a bridge step, unpinned action, missing or late tag reconciliation)", () => {
+  const base = parseYaml(
+    readFileSync(path.join(REPO_ROOT, ".github/workflows/publish.yml"), "utf8"),
+  );
+
+  // A bridge step interpolating ${{ }} inside run: (here: the release-create
+  // invocation) must fail the template-hygiene assertion.
+  const bridgeInjection = structuredClone(base);
+  const createStep = bridgeInjection.jobs.publish.steps.find((step) =>
+    String(step.run ?? "").includes("publish-github-release.mjs publish"),
+  );
+  assert.ok(createStep, "the bridged workflow must carry the release-create step");
+  createStep.run =
+    'node tooling/scripts/publish-github-release.mjs publish --tag "${{ inputs.tag }}" --channel "$RELEASE_CHANNEL" --repo "$GITHUB_REPOSITORY"';
+  assert.ok(
+    assertPublishWorkflow(bridgeInjection, "publish.yml").some((violation) =>
+      violation.includes("inside run:"),
+    ),
+  );
+
+  // An unpinned action ref (the attestation action, here) must fail the
+  // external-action pinning assertions the CI lane runs over the same file.
+  const unpinned = structuredClone(base);
+  const attestStep = unpinned.jobs.publish.steps.find((step) =>
+    String(step.uses ?? "").startsWith("actions/attest-build-provenance@"),
+  );
+  assert.ok(attestStep, "the bridged workflow must carry the attestation step");
+  attestStep.uses = "actions/attest-build-provenance@v4.2.2";
+  assert.ok(
+    externalActionPinningViolations(unpinned, "publish.yml").some((violation) =>
+      violation.includes("must pin actions/attest-build-provenance@v4.2.2 to a full commit SHA"),
+    ),
+  );
+  // … while the real workflow stays clean.
+  assert.deepEqual(externalActionPinningViolations(base, "publish.yml"), []);
+
+  // Removing the tag-reconciliation step must fail the bridge assertion …
+  const reconcileless = structuredClone(base);
+  reconcileless.jobs.publish.steps = reconcileless.jobs.publish.steps.filter(
+    (step) => !String(step.run ?? "").includes("verify-release-tag.mjs"),
+  );
+  assert.ok(
+    assertPublishWorkflow(reconcileless, "publish.yml").some((violation) =>
+      violation.includes("verify-release-tag.mjs"),
+    ),
+  );
+
+  // … and so must moving it after tool setup / the repository gate (drift
+  // would burn the expensive steps before failing).
+  const lateReconcile = structuredClone(base);
+  const steps = lateReconcile.jobs.publish.steps;
+  const reconcileIndex = steps.findIndex((step) =>
+    String(step.run ?? "").includes("verify-release-tag.mjs"),
+  );
+  const [reconcileStep] = steps.splice(reconcileIndex, 1);
+  const gateIndex = steps.findIndex(
+    (step) => String(step.run ?? "").includes("pnpm run all"),
+  );
+  // Insert AFTER the repository gate: drift would burn the expensive steps.
+  steps.splice(gateIndex + 1, 0, reconcileStep);
+  assert.ok(
+    assertPublishWorkflow(lateReconcile, "publish.yml").some((violation) =>
+      violation.includes("before the repository gate"),
+    ),
+  );
+});
+
+test("publish workflow guard: the npm trusted-publishing gate is suspended during the bridge", () => {
+  // BRIDGE (temporary): the npm CLI gate step is commented out with the npmjs
+  // path — the parsed workflow must carry no active gate step, while the raw
+  // text keeps the commented step (with its restore marker) so the bridge-exit
+  // change can restore it together with its semvar-comparison test.
   const workflow = parseYaml(
     readFileSync(path.join(REPO_ROOT, ".github/workflows/publish.yml"), "utf8"),
   );
   const gateSteps = Object.values(workflow.jobs ?? {})
     .flatMap((job) => job.steps ?? [])
     .filter((step) => typeof step.run === "string" && step.run.includes("trusted-publishing support"));
-  assert.equal(gateSteps.length, 1, "the publish workflow must carry exactly one npm CLI gate");
+  assert.equal(
+    gateSteps.length,
+    0,
+    "the npm CLI gate step must be suspended (commented) during the bridge",
+  );
 
-  // Execute the exact embedded gate script against stubbed `npm --version`
-  // output, so the comparison logic itself is under test (a two-component
-  // comparison would accept 11.5.0, which predates trusted publishing).
-  const script = /node -e '([^']*)'/u.exec(gateSteps[0].run)?.[1];
-  assert.ok(script, "the gate must be a node -e script");
-  const work = mkdtempSync(path.join(tmpdir(), "npm-gate-"));
-  try {
-    const scriptFile = path.join(work, "gate.cjs");
-    writeFileSync(scriptFile, `${script}\n`);
-    // The preload stubs child_process.execSync so the gate reads the fake
-    // version instead of the runner's real npm.
-    const preload = path.join(work, "stub-npm-version.cjs");
-    writeFileSync(
-      preload,
-      [
-        "const { execSync } = require('node:child_process');",
-        "require('node:child_process').execSync = (command, options) =>",
-        "  process.env.FAKE_NPM_VERSION",
-        "    ? `${process.env.FAKE_NPM_VERSION}\n`",
-        "    : execSync(command, options);",
-      ].join("\n"),
-    );
-
-    const gate = (version) =>
-      node(["--require", preload, scriptFile], {
-        env: { ...process.env, FAKE_NPM_VERSION: version },
-      });
-
-    for (const tooOld of ["10.9.0", "11.4.9", "11.5.0"]) {
-      const result = gate(tooOld);
-      assert.notEqual(result.status, 0, `npm ${tooOld} must be rejected`);
-      assert.match(result.stderr, /predates trusted-publishing support \(needs >= 11\.5\.1\)/u);
-    }
-    for (const supported of ["11.5.1", "11.5.2", "11.6.0", "12.0.0"]) {
-      const result = gate(supported);
-      assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /supports trusted publishing/u);
-    }
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
+  const raw = readFileSync(path.join(REPO_ROOT, ".github/workflows/publish.yml"), "utf8");
+  assert.match(
+    raw,
+    /# - name: Check the npm CLI supports trusted publishing \(OIDC path\)/u,
+    "the suspended gate step must remain in its commented form",
+  );
+  assert.match(
+    raw,
+    /predates trusted-publishing support \(needs >= 11\.5\.1\)/u,
+    "the suspended gate script must remain verbatim for the bridge exit",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1341,6 +2285,8 @@ test("release scripts are byte-identical between catalog and disk (guard rails)"
     "wait-for-npm-packages.mjs",
     "npm-release-state.mjs",
     "generate-release-sbom.mjs",
+    "verify-release-tag.mjs",
+    "publish-github-release.mjs",
   ]) {
     assert.ok(existsSync(path.join(SCRIPTS, script)), `${script} must exist`);
   }
