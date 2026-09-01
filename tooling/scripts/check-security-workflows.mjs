@@ -29,13 +29,13 @@ const assertBranches = (workflow, eventName, relativePath) => {
   }
 };
 
-const assertExternalActionPinned = (action, location) => {
+const assertExternalActionPinned = (action, location, violations) => {
   if (typeof action !== "string" || action.startsWith("./")) {
     return;
   }
   if (action.startsWith("docker://")) {
     if (!/@sha256:[0-9a-f]{64}$/u.test(action)) {
-      errors.push(`${location} must pin ${action} to a sha256 image digest`);
+      violations.push(`${location} must pin ${action} to a sha256 image digest`);
     }
     return;
   }
@@ -43,20 +43,33 @@ const assertExternalActionPinned = (action, location) => {
   const separatorIndex = action.lastIndexOf("@");
   const reference = separatorIndex === -1 ? "" : action.slice(separatorIndex + 1);
   if (!/^[0-9a-f]{40}$/u.test(reference)) {
-    errors.push(`${location} must pin ${action} to a full commit SHA`);
+    violations.push(`${location} must pin ${action} to a full commit SHA`);
   }
 };
 
-const assertExternalActionsPinned = (workflow, relativePath) => {
+/**
+ * External-action pinning violations for one workflow document. Pure
+ * (returns the list) so the release-tooling mutation tests can exercise
+ * mutated copies of the publication workflow; the main check pushes these
+ * into the global error list.
+ */
+export const externalActionPinningViolations = (workflow, relativePath) => {
+  const violations = [];
   for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
-    assertExternalActionPinned(job.uses, `${relativePath} job ${jobName}`);
+    assertExternalActionPinned(job.uses, `${relativePath} job ${jobName}`, violations);
     for (const step of job.steps ?? []) {
       assertExternalActionPinned(
         step.uses,
         `${relativePath} job ${jobName} step ${step.name ?? "<unnamed>"}`,
+        violations,
       );
     }
   }
+  return violations;
+};
+
+const assertExternalActionsPinned = (workflow, relativePath) => {
+  errors.push(...externalActionPinningViolations(workflow, relativePath));
 };
 
 const assertCheckoutDoesNotPersistCredentials = (step, location) => {
@@ -83,11 +96,15 @@ const assertCheckoutsDoNotPersistCredentials = (workflow, relativePath) => {
 const PUBLISH_REGISTRY = "https://registry.npmjs.org/";
 
 /**
- * Dedicated assertions for the publication workflow (npm-publication spec):
- * dispatch-only trigger, branch/channel gate present, registry locked to the
- * public npmjs registry, and least-privilege permissions. Returns the list of
- * violations (prefixed with `relativePath`); exported so the release-tooling
- * tests can exercise mutated copies of the workflow.
+ * Dedicated assertions for the publication workflow (npm-publication +
+ * github-release-distribution specs): dispatch-only trigger, branch/channel
+ * gate present, operator-tag reconciliation present before any build step,
+ * registry locked to the public npmjs registry, and the exact bridge
+ * permission grant. Returns the list of violations (prefixed with
+ * `relativePath`); exported so the release-tooling tests can exercise
+ * mutated copies of the workflow. The tag-reconciliation assertion is part
+ * of the BRIDGE (temporary) shape: the bridge-exit change removes it
+ * together with the bridge steps.
  */
 export const assertPublishWorkflow = (workflow, relativePath) => {
   const violations = [];
@@ -129,6 +146,47 @@ export const assertPublishWorkflow = (workflow, relativePath) => {
     );
   }
 
+  // BRIDGE (temporary): the operator-tag reconciliation must run before any
+  // build step (setup or the repository gate) so tag drift fails the run
+  // within seconds.
+  const reconcileStepIndex = (steps) =>
+    steps.findIndex(
+      (step) =>
+        typeof step.run === "string" && step.run.includes("verify-release-tag.mjs"),
+    );
+  const reconcilePresent = Object.values(workflow.jobs ?? {}).some(
+    (job) => reconcileStepIndex(job.steps ?? []) !== -1,
+  );
+  if (!reconcilePresent) {
+    violations.push(
+      "must reconcile the operator release tag (verify-release-tag.mjs) in a step",
+    );
+  } else {
+    for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+      const steps = job.steps ?? [];
+      const reconcile = reconcileStepIndex(steps);
+      if (reconcile === -1) {
+        continue;
+      }
+      const setupIndex = steps.findIndex(
+        (step) => typeof step.uses === "string" && step.uses.includes("setup-node-pnpm"),
+      );
+      const gateRunIndex = steps.findIndex(
+        (step) => typeof step.run === "string" && step.run.includes("pnpm run all"),
+      );
+      if (setupIndex !== -1 && reconcile > setupIndex) {
+        violations.push(
+          `job ${jobName} must reconcile the release tag before tool setup`,
+        );
+      }
+      if (gateRunIndex !== -1 && reconcile > gateRunIndex) {
+        violations.push(
+          `job ${jobName} must reconcile the release tag before the repository gate`,
+        );
+      }
+    }
+  }
+
   // Registry lockdown: the publication path only ever talks to public npmjs.
   if (workflow.env?.NPM_REGISTRY !== PUBLISH_REGISTRY) {
     violations.push(
@@ -136,17 +194,21 @@ export const assertPublishWorkflow = (workflow, relativePath) => {
     );
   }
 
-  // Least-privilege permissions: exactly what publication needs.
+  // BRIDGE (temporary) least-privilege permissions: exactly what the GitHub
+  // release publication needs (release creation, provenance attestation
+  // signing, and attestation storage). The bridge-exit change restores the
+  // contents: read + id-token: write shape.
   for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
     const permissions = job.permissions ?? {};
     const permissionKeys = Object.keys(permissions);
     if (
-      permissionKeys.length !== 2 ||
-      permissions.contents !== "read" ||
-      permissions["id-token"] !== "write"
+      permissionKeys.length !== 3 ||
+      permissions.contents !== "write" ||
+      permissions["id-token"] !== "write" ||
+      permissions.attestations !== "write"
     ) {
       violations.push(
-        `job ${jobName} must grant exactly contents: read and id-token: write`,
+        `job ${jobName} must grant exactly contents: write, id-token: write, and attestations: write`,
       );
     }
   }
@@ -327,7 +389,7 @@ const main = () => {
   }
 
   console.log(
-    "Security workflow contract is valid: branch coverage, dedicated Scorecard publication, public dependency review, Dependabot, immutable action refs, checkout credential hygiene, and the publication workflow contract (dispatch-only trigger, channel gate, locked npmjs registry, least-privilege permissions).",
+    "Security workflow contract is valid: branch coverage, dedicated Scorecard publication, public dependency review, Dependabot, immutable action refs, checkout credential hygiene, and the publication workflow contract (dispatch-only trigger, channel gate, tag reconciliation, locked npmjs registry, bridge permissions: contents write, id-token write, attestations write).",
   );
 };
 

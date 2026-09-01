@@ -39,8 +39,16 @@
 - [x] 6.2 Dry-run the version path end-to-end: `prepare-release-version.mjs --channel rc --rc-index 1 --dry-run --json` for `0.1.0-rc1` and `--channel snapshot --dry-run --json` (expects run/sha suffix) and verify manifests retain `0.1.0` and no git state changes (`git status --porcelain` clean)
 - [x] 6.3 Confirm the change's own PR title passes the PR-title gate (type `feat`, scope `release`) and CI is green on the PR
 
-## 7. First release (operator-manual, after merge)
+## 7. First release (operator-manual — closed out as a handoff, not tracked here)
 
-- [ ] 7.1 Operator verifies `MIDNIGHTCI_NPMJS_TOKEN` is available to the repository and may create new packages in the `@midnight-ntwrk` org (runbook pre-dispatch gates)
-- [ ] 7.2 Operator dispatches `channel=rc, version=0.1.0, rc_index=1` from `develop` and verifies `@midnight-ntwrk/midnight-verifiable-credential-digital-passport@0.1.0-rc1` is public on npmjs under the `rc` dist-tag with provenance; on this first-ever publication `latest` will also resolve to `0.1.0-rc1` (unavoidable npmjs behavior, tolerated by the pipeline) until the first `release` dispatch
-- [ ] 7.3 Update README install instructions with the live rc version and record the release in the package and root changelogs
+> **Closure note:** All repository-side work for this change is complete. The
+> first live release is executed by operators per `docs/guides/npmjs-publication.md`.
+> In particular, the `MIDNIGHTCI_NPMJS_TOKEN` repository secret and the ability to
+> create packages in the `@midnight-ntwrk` org are provisioned by org owners
+> (`@midnightntwrk/mn-sre`) and are **outside our control** in this repository —
+> they cannot be created or verified from within this change. The remaining
+> steps are recorded here as the handoff checklist, not open tasks:
+
+- 7.1 Operator verifies `MIDNIGHTCI_NPMJS_TOKEN` is available to the repository and may create new packages in the `@midnight-ntwrk` org (runbook pre-dispatch gates) — token provisioning is owned by `@midnightntwrk/mn-sre`, outside our control
+- 7.2 Operator dispatches `channel=rc, version=0.1.0, rc_index=1` from `develop` and verifies `@midnight-ntwrk/midnight-verifiable-credential-digital-passport@0.1.0-rc1` is public on npmjs under the `rc` dist-tag with provenance; on this first-ever publication `latest` will also resolve to `0.1.0-rc1` (unavoidable npmjs behavior, tolerated by the pipeline) until the first `release` dispatch
+- 7.3 Update README install instructions with the live rc version and record the release in the package and root changelogs (post-dispatch doc touch-up, owned by the operator performing the release)

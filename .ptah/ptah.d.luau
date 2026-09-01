@@ -1,10 +1,9 @@
--- ponos 0.1.0 type definitions
 --!strict
 -- @meta
 --
--- Type definitions for ponos scripts: the injected `ponos` global plus the
+-- Type definitions for ptah scripts: the injected `ptah` global plus the
 -- sandboxed environment the runtime provides. Load them into your editor's
--- luau-lsp (`ponos types > ponos.d.luau` — see the README "Editor setup"
+-- luau-lsp (`ptah types > ptah.d.luau` — see the README "Editor setup"
 -- section). This file is the single source of truth; the binary embeds it
 -- verbatim. Written in plain `declare name: type` syntax (no `declare
 -- class`, which newer Luau parsers reject); method-style fields take an
@@ -64,19 +63,14 @@ export type McpServer = McpServerStdio | McpServerHttp
 -- is a JSON Schema expressed as a plain Luau table: when set, the session
 -- gets a typed-result contract — prompts carry a submit-tool instruction
 -- and the outcome's `result` field carries the accepted submission.
--- `config` maps config-option ids to select choice ids (strings) or
--- boolean values, applied when the session is created (one `setConfig`
--- per entry; agent responses are authoritative). Declared as a union of
--- index signatures rather than `{ [string]: string | boolean }` because
--- table literals never unify with union-valued index signatures
--- (definitions-file types check invariantly) — the cost is that mixed
--- string/boolean tables are flagged; split entries or annotate.
+-- (Session config is applied with `setConfig` calls after `session()`
+-- returns — there is no `config` field; a `config` key is rejected at
+-- runtime before any agent subprocess spawns.)
 export type SessionOptions = {
 	id: string?,
 	cwd: string?,
 	mcpServers: { McpServer }?,
 	resultSchema: { [string]: any }?,
-	config: ({ [string]: string } | { [string]: boolean })?,
 }
 
 -- Options for `session:prompt(text, …)`.
@@ -105,19 +99,44 @@ export type ConfigOption = {
 	options: { ConfigOptionChoice }?,
 }
 
--- Inline agent spec for `ponos.agent({ … })` (skips the registry).
+-- Inline agent spec for `ptah.agent({ … })` (skips the registry).
 export type AgentSpec = {
 	command: string,
 	args: { string }?,
 	env: { [string]: string }?,
 }
 
--- Options for `ponos.parallel(items, fn, …)`.
+-- Options for `ptah.parallel(items, fn, …)`.
 export type ParallelOptions = {
 	concurrency: number?,
 }
 
--- Per-item outcome of `ponos.parallel` / `ponos.join`: narrow on
+-- Options for `ptah.exec(cmd, …)`: `timeoutMs` absent or nil means no
+-- budget (bounded only by outer cancellation).
+export type ExecOptions = {
+	timeoutMs: number?,
+}
+
+-- Result of `ptah.exec(cmd)`. Any exit code is data — `exitCode` is a
+-- number even when the command failed (a signal death maps to the
+-- shell's `128 + signal` convention); only could-not-run and timeout
+-- raise.
+export type ExecResult = {
+	exitCode: number,
+	stdout: string,
+	stderr: string,
+}
+
+-- Pure JSON module (`ptah.json`): turns captured command output into
+-- script data and back. `parse` raises on malformed input; JSON `null`
+-- decodes to nil. `stringify` rejects non-string table keys (arrays use
+-- consecutive 1..n indexes).
+export type Json = {
+	parse: (s: string) -> any,
+	stringify: (value: any, opts: { indent: number? }?) -> string,
+}
+
+-- Per-item outcome of `ptah.parallel` / `ptah.join`: narrow on
 -- `entry.ok` (bind the entry to a local first) to reach `value` or `error`.
 export type Outcome<T> = {
 	ok: true,
@@ -127,13 +146,13 @@ export type Outcome<T> = {
 	error: string,
 }
 
--- Handle returned by `ponos.spawn(fn)`; `task:await()` yields the task's
+-- Handle returned by `ptah.spawn(fn)`; `task:await()` yields the task's
 -- first return value or re-raises its error at the await site.
 export type Task<T> = {
 	await: (self: Task<T>) -> T,
 }
 
--- Agent factory from `ponos.agent(name_or_spec)`.
+-- Agent factory from `ptah.agent(name_or_spec)`.
 export type Agent = {
 	session: (self: Agent, opts: SessionOptions?) -> Session,
 }
@@ -150,14 +169,16 @@ export type Session = {
 }
 
 -- ---------------------------------------------------------------------------
--- The `ponos` global
+-- The `ptah` global
 -- ---------------------------------------------------------------------------
 
-declare ponos: {
+declare ptah: {
 	agent: (spec: string | AgentSpec) -> Agent,
 	spawn: <T>(f: () -> T) -> Task<T>,
 	join: <T>(tasks: { Task<T> }) -> { Outcome<T> },
 	parallel: <T, U>(items: { T }, fn: (item: T) -> U, opts: ParallelOptions?) -> { Outcome<U> },
+	exec: (cmd: string, opts: ExecOptions?) -> ExecResult,
+	json: Json,
 	sleep: (ms: number) -> (),
 	log: (msg: string) -> (),
 	exit: (code: number?) -> (),

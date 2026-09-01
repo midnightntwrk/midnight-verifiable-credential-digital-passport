@@ -8,6 +8,6 @@ export type Config = {
 
 return {
 	defaultModel = "zai/glm-5.3",
-	judgeModel = "qwencloud/deepseek-v4-flash-0731",
-	changeName = "add-npm-release-pipeline",
+	judgeModel = "zai/glm-5.3-flash",
+	changeName = "add-github-release-tgz-bridge",
 } :: Config

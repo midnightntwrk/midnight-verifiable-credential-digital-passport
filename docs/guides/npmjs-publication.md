@@ -23,6 +23,137 @@ package manifests (they must agree, and the workflow fails if they don't); the
 workflow stamps the channel version only into its ephemeral checkout. Nothing
 is committed, tagged, or pushed by a publication.
 
+> **Temporary distribution bridge (active):** while the
+> `MIDNIGHTCI_NPMJS_TOKEN` grant is unavailable, the registry publication
+> steps below are suspended and the workflow distributes through GitHub
+> Releases instead. See
+> [Temporary distribution bridge](#temporary-distribution-bridge-github-releases)
+> for the dispatch procedure, the rerun/rollback rules, and the exit
+> condition. Everything else in this runbook (ownership, channels, gating,
+> stateless versioning, pre-dispatch checks) stays in force unchanged.
+
+## Temporary distribution bridge (GitHub Releases)
+
+**BRIDGE (temporary).** The npmjs token grant is blocked outside this
+repository's control, so the publication workflow currently attaches the
+gated, contract-checked tarball to a GitHub Release instead of publishing to
+the npmjs registry. npmjs remains the sole eventual target — the bridge
+deliberately introduces no second registry (GitHub Packages was rejected to
+avoid a second confusing registry target). Consumers install by versioned
+release URL; see the "Installing from GitHub Releases" sections of the root
+and package READMEs.
+
+### What the bridged run does
+
+The suspended steps (npm CLI trusted-publishing check, dist-tag snapshot,
+npm publish, propagation wait, dist-tag verification, registry-mode consumer
+test) remain in `publish.yml` in commented form with restore instructions;
+`NPM_REGISTRY` stays locked to `https://registry.npmjs.org/` (the dependency
+source during install); and the run instead:
+
+1. resolves and gates the publication context exactly as before
+   (dispatch-only; `snapshot` fails closed with a bridge-specific message —
+   run-number-stamped snapshot versions cannot be pre-tagged by an operator),
+2. reconciles the operator-supplied release tag before any build step,
+3. re-runs the full repository gate and the smoke round-trip,
+4. stamps the version statelessly, packs + contract-checks + consumer-tests
+   the tarballs (the contract check additionally emits
+   `tooling/artifacts/contract-report.json`), and generates the SPDX SBOMs,
+5. uploads the 90-day release-evidence artifact (tarballs + SBOMs + the
+   contract report),
+6. writes SHA256SUMS over the tarball/SBOM/contract report, creates the
+   release on the operator tag with every asset and a generated body
+   (channel, version, install URL, checksums, verification one-liners,
+   changelog link) — `rc` creates a **prerelease (never latest)**, `release`
+   creates the **latest** release — and verifies every uploaded asset digest
+   against the packed bytes,
+7. attests every uploaded asset (build provenance), and
+8. runs a clean-consumer install from the just-created release's download
+   URL (dependencies resolve from the public npmjs registry).
+
+### Dispatch procedure (bridge)
+
+1. Confirm every pre-dispatch gate above (CI green on the dispatch branch,
+   catalog tight, manifests and changelogs current). The token check does not
+   apply during the bridge.
+2. Create and push the release tag on the commit you will dispatch from
+   (the release commit):
+
+   ```sh
+   git tag v0.1.0-rc1            # on the release commit
+   git push origin v0.1.0-rc1
+   ```
+
+3. On the **Actions** tab, choose **Publish** → **Run workflow**:
+   - **Branch:** `develop` (rc) or `main` (release)
+   - **Channel:** `rc` or `release` (`snapshot` is rejected during the bridge)
+   - **Tag:** the tag you pushed (`v0.1.0-rc1`)
+   - **Version:** the manifest base (optional confirmation)
+   - **rc_index:** e.g. `1` (rc channel only; defaults to 1)
+4. Watch the run. Expected sequence: context resolution → tag reconciliation
+   → tool setup → full gate → smoke round-trip → version preparation → pack
+   + contract check + tarball consumer test → SBOMs → evidence artifact →
+   sums + body → release creation → digest verification → attestations →
+   release-URL consumer test → summary.
+
+### Tag and `rc_index` reconciliation rules
+
+The run fails **before any build step** unless the supplied tag:
+
+- exists in the repository (pushed, not just local),
+- points at the commit the dispatch was made from (`github.sha`), and
+- equals `v<resolved-full-version>` — for `rc`, `<base>-rc<rc_index>` with
+  `rc_index` defaulting to `1`; for `release`, exactly `v<base>`.
+
+Typical mismatches: tag `v0.1.0-rc2` with `rc_index` left at its default `1`
+(fails with the expected tag in the message), a tag on a commit other than
+the dispatch HEAD, or a forgotten `git push` of the tag. The workflow itself
+never creates, moves, or deletes any ref; the manifests keep the base
+version after publication (statelessness is preserved).
+
+### Rerun, rollback, and failure handling
+
+- **Rerun after a success (no-op):** re-dispatching the same channel, tag,
+  version, and index succeeds as an **idempotent no-op** — the run verifies
+  every existing asset digest against the freshly packed artifacts and skips
+  re-creation. This is the safe answer to "did it finish?".
+- **Partial asset upload:** a rerun uploads only the missing assets; existing
+  assets are never overwritten (`--clobber` is never used).
+- **Digest drift on an existing release:** the run fails closed. Delete the
+  failed release (`gh release delete <tag> --yes`) or re-dispatch the
+  corrected publication; delete the tag itself only when it is wrong.
+- **Failed release-URL consumer round-trip:** the run fails after the release
+  became visible. Delete the failed release so no release whose URL-installed
+  package failed the round-trip remains published, fix the cause, and
+  re-dispatch.
+- **Rollback (any time):** the bridge is additive to git history — reverting
+  the change's commits restores the npm path verbatim; existing releases
+  remain as inert artifacts until deleted by an admin.
+
+### Integrity evidence and residual risk
+
+Every release carries the tarball, SHA256SUMS, the SPDX SBOM, and the
+contract report; every uploaded asset carries a build-provenance
+attestation (verify with `gh attestation verify --repo
+midnightntwrk/midnight-verifiable-credential-digital-passport <asset-file>`).
+The 90-day release-evidence artifact is retained as before. Residual risk:
+a repository admin can replace a release asset's bytes at the pinned URL —
+accepted for the bridge window; attestation verification makes replacement
+detectable, and tag-deletion rulesets are recommended where the org permits.
+
+### Bridge exit condition
+
+Once the npm automation token is available and the first **`release`-channel
+npmjs publication succeeds, a **single follow-up change** ends the bridge: it
+uncomments the suspended npmjs steps and the `NODE_AUTH_TOKEN` env, removes
+the bridge steps and the `tag` workflow input, restores the workflow
+permissions to `contents: read` + `id-token: write`, restores the scoped
+`npm-publication` and `repository-toolchain` requirements to their
+unconditional form, removes the `github-release-distribution` capability,
+and updates the consumer documentation — returning npmjs to the sole
+distribution channel. Until that exit, the bridge is the documented
+publication path; it must not silently persist as a second channel.
+
 ## Ownership
 
 | Concern                          | Owner                        |
