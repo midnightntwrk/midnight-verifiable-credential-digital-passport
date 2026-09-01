@@ -30,8 +30,8 @@
 
 ## 6. Offline verification
 
-- [ ] 6.1 Run the full offline gate `pnpm run all` (security self-check, vulnerability exceptions, release-tooling tests, lint, typecheck, build, tests) and `pnpm run artifacts:pack`; verify both are green with the bridged workflow present
-- [ ] 6.2 Dry-run the tag path: create a scratch tag locally, exercise `verify-release-tag.mjs` against match and mismatch cases, delete the scratch tag; verify `git status --porcelain` is clean afterward and manifests retain `0.1.0`
+- [x] 6.1 Run the full offline gate `pnpm run all` (security self-check, vulnerability exceptions, release-tooling tests, lint, typecheck, build, tests) and `pnpm run artifacts:pack`; verify both are green with the bridged workflow present
+- [x] 6.2 Dry-run the tag path: create a scratch tag locally, exercise `verify-release-tag.mjs` against match and mismatch cases, delete the scratch tag; verify `git status --porcelain` is clean afterward and manifests retain `0.1.0`
 - [ ] 6.3 Confirm the change PR title passes the PR-title gate and CI is green on the `release-tgz` branch
 
 ## 7. First bridge dispatch (operator-manual, after merge)
