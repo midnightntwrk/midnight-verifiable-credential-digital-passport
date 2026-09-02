@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- First bridge release: **`v0.1.0-rc1`** dispatched on `develop` (channel
+  `rc`, [run 33615405618](https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/actions/runs/33615405618))
+  through the temporary GitHub-Release distribution bridge pending the npmjs
+  automation token. The prerelease (never latest) carries the
+  contract-checked tarball, `SHA256SUMS`, the SPDX SBOM, the package-contract
+  report, and build-provenance attestations for every asset; the release-URL
+  consumer round-trip passed and every attestation verified via
+  `gh attestation verify`. Consumers install by the versioned release URL
+  (see the READMEs); the dispatch procedure and the bridge exit condition
+  live in the [publication runbook](docs/guides/npmjs-publication.md).
+
 ### Security
 
 - Pinned the transitive `nanoid` to **3.3.18** via a single workspace

@@ -36,5 +36,5 @@
 
 ## 7. First bridge dispatch (operator-manual, after merge)
 
-- [ ] 7.1 Operator creates and pushes tag `v0.1.0-rc1` on the release commit and dispatches `channel=rc` with the tag input from the permitted branch; verify the run passes gate/pack/reconciliation, creates a non-latest prerelease carrying tarball + SHA256SUMS + SBOM + contract report + generated body, and the release-URL consumer test passes
-- [ ] 7.2 Operator verifies `gh attestation verify` succeeds against the uploaded assets and records the bridge release in the root and package changelogs
+- [x] 7.1 Operator creates and pushes tag `v0.1.0-rc1` on the release commit and dispatches `channel=rc` with the tag input from the permitted branch; verify the run passes gate/pack/reconciliation, creates a non-latest prerelease carrying tarball + SHA256SUMS + SBOM + contract report + generated body, and the release-URL consumer test passes
+- [x] 7.2 Operator verifies `gh attestation verify` succeeds against the uploaded assets and records the bridge release in the root and package changelogs
