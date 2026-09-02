@@ -2,6 +2,8 @@
 
 Defines the repository's reproducible development and continuous-integration contract: the workspace layout, engine requirements, pinned Compact toolchain for local and CI builds, and the required CI lanes including security hygiene.
 
+The publication-workflow clause of the CI-lane self-check requirement is scoped to the period when the npmjs-registry publication path is active: during the temporary GitHub-Release bridge window (see the `github-release-distribution` capability) the publish step is suspended and the least-privilege publication permissions change shape, so the self-check instead pins the bridge publication shape exactly. Every other CI-lane obligation — lanes, fail-closed scanning, action pinning, checkout hygiene — is untouched, and the bridge-exit change restores the clause to its unconditional form.
+
 ## Requirements
 
 ### Requirement: Workspace layout
@@ -62,7 +64,7 @@ The compact compiler SHALL be pinned to a version whose emitted `checkRuntimeVer
 
 ### Requirement: Continuous integration lanes
 
-The repository SHALL run, on pull requests and pushes to the integration branches (`develop` and `main`), a lane that typechecks, lints, builds, and tests all workspaces, and the same lane SHALL exercise the release tooling test suite. The repository SHALL additionally carry dependency-review, scorecard, and template scan lanes. The scan lane SHALL fail on high-severity findings (fail-closed) and SHALL NOT duplicate the Scorecard pass owned by the dedicated scorecard lane. The security-relevant workflow definitions SHALL be verified by a CI-enforced self-check that asserts every external action is pinned to a full commit SHA, every checkout disables credential persistence, the scan, scorecard, and dependency-review workflows declare the repository's branch policy, and the publication workflow keeps its dispatch-only trigger, branch/channel gate, pinned public npmjs registry, provenance-enabled publish, and least-privilege permissions.
+The repository SHALL run, on pull requests and pushes to the integration branches (`develop` and `main`), a lane that typechecks, lints, builds, and tests all workspaces, and the same lane SHALL exercise the release tooling test suite. The repository SHALL additionally carry dependency-review, scorecard, and template scan lanes. The scan lane SHALL fail on high-severity findings (fail-closed) and SHALL NOT duplicate the Scorecard pass owned by the dedicated scorecard lane. The security-relevant workflow definitions SHALL be verified by a CI-enforced self-check that asserts every external action is pinned to a full commit SHA, every checkout disables credential persistence, the scan, scorecard, and dependency-review workflows declare the repository's branch policy, and — when the npmjs-registry publication path is active — the publication workflow keeps its dispatch-only trigger, branch/channel gate, pinned public npmjs registry, provenance-enabled publish, and least-privilege permissions (`contents: read` and `id-token: write`). During the GitHub-Release bridge window (see the `github-release-distribution` capability) the publish step is suspended and the self-check SHALL instead assert the bridge publication shape exactly — dispatch-only trigger, branch/channel gate, pinned public npmjs registry, and the permissions `contents: write`, `id-token: write`, and `attestations: write` — until the bridge-exit change restores this clause to its unconditional form.
 
 #### Scenario: PR lane exercises the full contract
 
@@ -96,8 +98,13 @@ The repository SHALL run, on pull requests and pushes to the integration branche
 
 #### Scenario: Publication workflow drift fails CI
 
-- **WHEN** the publication workflow gains a push-event trigger, loses its branch/channel gate, points at a non-npmjs registry, disables provenance, or widens its permissions beyond the publication needs
+- **WHEN** the npmjs-registry publication path is active and the publication workflow gains a push-event trigger, loses its branch/channel gate, points at a non-npmjs registry, disables provenance, or widens its permissions beyond the publication needs
 - **THEN** the security-workflow self-check fails the CI lane
+
+#### Scenario: Bridge publication shape passes the self-check
+
+- **WHEN** the GitHub-Release bridge is active and the publication workflow carries the bridge shape (no publish step; permissions exactly `contents: write`, `id-token: write`, `attestations: write`)
+- **THEN** the security-workflow self-check passes the CI lane while still failing any drift outside the bridge shape
 
 ### Requirement: Build evidence for the migration
 
