@@ -33,6 +33,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instead of `threshold * 365` days, which let proofs pass up to ~16 days
   early.
 
+## [0.1.0-rc1] - 2026-09-02
+
+First release candidate of the `0.1.0` line, published through the temporary
+[GitHub-Release distribution bridge](https://github.com/midnightntwrk/midnight-verifiable-credential-digital-passport/releases/tag/v0.1.0-rc1)
+while the npmjs automation token is pending: install by the versioned
+release URL pinned in the package README. The release carries the tarball,
+`SHA256SUMS`, the SPDX SBOM, the contract report, and build-provenance
+attestations for every asset. No code changes beyond the `0.1.0` scope
+below — the candidate exists to exercise the bridged publication pipeline.
+
 ## [0.1.0]
 
 Initial release of the digital-passport credential family as a standalone
@@ -53,5 +63,7 @@ monorepo.
   `@midnight-ntwrk/compact-runtime`.
 
 The `0.1.0` line is cut through the
-[npmjs publication pipeline](../../docs/guides/npmjs-publication.md): the
-first release candidate is `0.1.0-rc1` under the `rc` dist-tag.
+[npmjs publication pipeline](../../docs/guides/npmjs-publication.md); while
+the npmjs automation token is pending, the first release candidate
+`0.1.0-rc1` shipped through the temporary GitHub-Release distribution
+bridge (see above).
