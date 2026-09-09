@@ -12,7 +12,9 @@ trustPolicy: no-downgrade
 minimumReleaseAgeExclude:
   [
     # Renovate security update: pnpm@10.34.5
-    pnpm@10.34.5
+    pnpm@10.34.5,
+    # Renovate security update: vitest@4.1.11
+    vitest@4.1.11
   ]
 trustPolicyExclude: []
 
