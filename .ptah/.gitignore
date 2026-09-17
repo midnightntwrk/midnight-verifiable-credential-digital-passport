@@ -2,3 +2,8 @@
 /luau_packages/
 /.pesde/
 # <<< ptah
+
+# Per-issue factory worktrees. Kept outside the managed section above so
+# `ptah init` cannot drop it. Mirrors WORKTREE_PARENT in
+# workflows/factory/main.luau.
+/worktree/

@@ -55,6 +55,13 @@ local REPORTER_MODEL = "zai/glm-5.3-flash"
 local WORKTREE_REF = "origin/develop"
 local WORKTREE_FETCH = true
 
+-- Where the per-issue worktrees live. The worktree mechanism defaults to the
+-- repository root's sibling; this keeps them inside the checkout under an
+-- ignored directory instead. The parent is resolved relative to the repository
+-- root (the mechanism runs `git -C <root>`), so a relative path stays correct
+-- wherever the repository is checked out.
+local WORKTREE_PARENT = ".ptah/worktree"
+
 -- Bounded retries for the typed-result hand-offs (resolve change, open PR):
 -- agents may ignore the submit tool, so a nil result is designed degradation,
 -- not a hard failure, until the attempts are exhausted.
@@ -137,6 +144,7 @@ local function prepareWorktree(brief: Brief): Worktree
 		ref = WORKTREE_REF,
 		branch = branch,
 		fetch = WORKTREE_FETCH,
+		parent = WORKTREE_PARENT,
 	})
 	ptah.log(("factory: issue #%d worktree %s on branch %s"):format(brief.number, wt.path, wt.branch))
 	return wt
