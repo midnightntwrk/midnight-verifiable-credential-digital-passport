@@ -6,7 +6,7 @@ version = "0.1.0"
 target = "luau"
 
 [graph."patextreme/ptah_libs@0.0.0-7d53d3b7cd4ba9cce1c6ef1ce56ed87d32ea6905 luau"]
-direct = ["ptah-libs", { repo = "https://github.com/patextreme/ptah-libs", rev = "main" }, "standard"]
+direct = ["ptah_libs", { repo = "https://github.com/patextreme/ptah-libs", rev = "main" }, "standard"]
 
 [graph."patextreme/ptah_libs@0.0.0-7d53d3b7cd4ba9cce1c6ef1ce56ed87d32ea6905 luau".pkg_ref]
 ref_ty = "git"

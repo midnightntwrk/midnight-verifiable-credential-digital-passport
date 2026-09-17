@@ -25,6 +25,6 @@ environment = "luau"
 
 [dependencies]
 
-[dependencies.ptah-libs]
+[dependencies.ptah_libs]
 repo = "https://github.com/patextreme/ptah-libs"
 rev = "main"
