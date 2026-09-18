@@ -5,11 +5,11 @@ name = "components/midnight_verifiable_credential_d"
 version = "0.1.0"
 target = "luau"
 
-[graph."patextreme/ptah_libs@0.0.0-7d53d3b7cd4ba9cce1c6ef1ce56ed87d32ea6905 luau"]
+[graph."patextreme/ptah_libs@0.0.0-e21ec3dacaa1f4687daa13b6f8bdbe8ffdd6738b luau"]
 direct = ["ptah_libs", { repo = "https://github.com/patextreme/ptah-libs", rev = "main" }, "standard"]
 
-[graph."patextreme/ptah_libs@0.0.0-7d53d3b7cd4ba9cce1c6ef1ce56ed87d32ea6905 luau".pkg_ref]
+[graph."patextreme/ptah_libs@0.0.0-e21ec3dacaa1f4687daa13b6f8bdbe8ffdd6738b luau".pkg_ref]
 ref_ty = "git"
 repo = "https://github.com/patextreme/ptah-libs"
-tree_id = "7d53d3b7cd4ba9cce1c6ef1ce56ed87d32ea6905"
+tree_id = "e21ec3dacaa1f4687daa13b6f8bdbe8ffdd6738b"
 new_structure = true
