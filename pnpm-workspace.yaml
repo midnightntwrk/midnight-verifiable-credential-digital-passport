@@ -23,7 +23,7 @@ trustPolicyExclude: []
 # 3.3.17. Dev-tooling scope only (postcss/vite chain); the publishable
 # manifest's registry-clean dependency policy is unaffected.
 overrides:
-  nanoid: 3.3.18
+  nanoid: 3.3.19
 
 # Declared (reviewed) build-script allowances: pnpm skips the install scripts
 # of these otherwise-silent dependencies instead of executing them.
