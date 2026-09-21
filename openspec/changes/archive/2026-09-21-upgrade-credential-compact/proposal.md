@@ -44,8 +44,11 @@ repo no longer ships.
   consumed core entry point is restated as the root export.
 
 Note on scheduling: the 7-day `minimumReleaseAge` supply-chain policy makes
-`0.2.0-rc1` installable on 2026-09-25; implementation must not start earlier
-unless a reviewed `minimumReleaseAgeExclude` entry is added.
+`0.2.0-rc1` installable on 2026-09-25. Implementation originally targeted that
+date; the change loop was instead authorized to proceed early via a reviewed,
+time-boxed `minimumReleaseAgeExclude` entry for
+`@midnight-ntwrk/credential-compact@0.2.0-rc1` (inert once the version is older
+than the window; droppable in a follow-up cleanup after 2026-09-25).
 
 ## Capabilities
 

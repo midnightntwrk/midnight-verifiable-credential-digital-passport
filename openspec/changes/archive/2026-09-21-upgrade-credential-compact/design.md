@@ -49,8 +49,10 @@ recompile lands as a reviewed commit. The new managed code emits
 `checkRuntimeVersion('0.16.0')`, matching the family manifest pin.
 
 The 7-day `minimumReleaseAge` policy (`pnpm-workspace.yaml`) makes
-`0.2.0-rc1` (published 2026-09-18) installable on **2026-09-25**. No
-exemption is added: implementation starts on or after that date.
+`0.2.0-rc1` (published 2026-09-18) installable on **2026-09-25**. The change
+loop was authorized to start early via a reviewed, time-boxed
+`minimumReleaseAgeExclude` entry for the exact version (inert after the window
+passes; droppable in cleanup) instead of holding the tree for four days.
 
 ## Goals / Non-Goals
 
@@ -120,13 +122,16 @@ exemption is added: implementation starts on or after that date.
   names structurally (no wire-format change), round-trip vectors change only
   in the TypeScript-level object shape.
 
-- **D6 — Recompile, review, and commit the managed diff.** `src/managed/**`
-  regenerates via `pnpm run compact` (0.31.1). The committed diff is the
-  audit artifact for: new guard `0.16.0`, renamed `VerificationMethodRef`
-  shape, schema-match assertions inherited from `relations.compact`, and the
-  canonical-body-root validation inherited from `vc.compact`. The extra
-  schema-match assertion on presentations is behaviorally satisfied by
-  existing fixtures (presentation.schema is copied from the credential).
+- **D6 — Recompile and audit the managed diff.** `src/managed/**` regenerates
+  via `pnpm run compact` (0.31.1). The repo git-ignores generated managed code
+  (`**/managed/`), so the recompile lands as a locally reviewed working-tree
+  diff rather than a commit; CI regenerates it on every build. The audited
+  diff is the checkpoint for: new guard `0.16.0`, renamed
+  `VerificationMethodRef` shape, schema-match assertions inherited from
+  `relations.compact`, and the canonical-body-root validation inherited from
+  `vc.compact`. The extra schema-match assertion on presentations is
+  behaviorally satisfied by existing fixtures (presentation.schema is copied
+  from the credential).
 
 ## Risks / Trade-offs
 

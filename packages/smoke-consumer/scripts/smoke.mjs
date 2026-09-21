@@ -52,6 +52,16 @@ function run(cmd, args, options = {}) {
   return result;
 }
 
+// `pnpm run` injects the workspace's own pnpm settings (including
+// `minimumReleaseAge`) into lifecycle-script environments as `npm_config_*`
+// variables. The isolated consumer below must simulate a plain consumer, so
+// the author-side release-age policy is stripped from the child environment;
+// the policy itself stays enforced where it belongs (pnpm-workspace.yaml,
+// with its reviewed time-boxed exclusion for credential-compact@0.2.0-rc1).
+const consumerEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !/release.?age/i.test(key)),
+);
+
 const isolated = mkdtempSync(join(tmpdir(), 'dp-smoke-'));
 console.log(`smoke: clean consumer project at ${isolated}`);
 try {
@@ -86,7 +96,7 @@ try {
   );
 
   console.log('smoke: installing the family tarball with registry-only transitive resolution');
-  run('pnpm', ['add', tarballPath, NETWORK_ID], { cwd: isolated });
+  run('pnpm', ['add', tarballPath, NETWORK_ID], { cwd: isolated, env: consumerEnv });
 
   cpSync(join(here, 'round-trip.mjs'), join(isolated, 'round-trip.mjs'));
   console.log('smoke: running the issuance/presentation/verification round-trip');
