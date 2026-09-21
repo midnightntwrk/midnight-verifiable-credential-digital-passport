@@ -18,7 +18,9 @@ minimumReleaseAgeExclude:
     # explicitly scheduled past the 7-day window (installs allowed from
     # 2026-09-25), and the change loop was authorized to proceed early.
     # The entry is inert once the version is older than the window and can
-    # be dropped in a follow-up cleanup after 2026-09-25.
+    # be dropped in a follow-up cleanup after 2026-09-25. The smoke-consumer's
+    # isolated install mirrors this exact policy into its own config rather
+    # than bypassing it.
     '@midnight-ntwrk/credential-compact@0.2.0-rc1'
   ]
 trustPolicyExclude: []

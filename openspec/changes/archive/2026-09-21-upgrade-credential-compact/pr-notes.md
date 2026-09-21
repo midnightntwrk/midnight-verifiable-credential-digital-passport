@@ -76,3 +76,26 @@ working-tree regeneration:
 - **Family guard passes**: family managed artifacts load against
   compact-runtime 0.16.0 without post-build rewriting (task 2.4 audit;
   exercised by every test/smoke import).
+
+## Addendum (PR review follow-up): the smoke lane enforces the release-age floor
+
+The isolated consumer smoke originally stripped every
+`npm_config_*release*age*` variable from the child install environment, which
+silently disabled the repository's seven-day release-age floor
+(`repository-toolchain` — "Supply-chain hardened dependency installation")
+for every package the smoke resolved from the registry. As of this PR the
+smoke lane instead enforces the floor in the child install:
+
+- leaked lifecycle-env policy variables are still stripped (an env var would
+  override the child's own policy, and pnpm cannot carry the exclusion list
+  through the environment), and
+- the workspace's `minimumReleaseAge` + `minimumReleaseAgeExclude` are read
+  live via `pnpm config get` and written into the isolated project's own
+  `pnpm-workspace.yaml`, so the child install applies the same floor with the
+  same reviewed, time-boxed exemptions (including
+  `@midnight-ntwrk/credential-compact@0.2.0-rc1`, inside the seven-day window
+  until 2026-09-25).
+
+Verified against a freshly published package: the isolated install accepts a
+version on the mirrored exclusion list and rejects an equally fresh version
+without it — the floor is real in the child, not stripped.
