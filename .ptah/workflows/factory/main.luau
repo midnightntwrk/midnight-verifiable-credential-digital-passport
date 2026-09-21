@@ -230,11 +230,16 @@ end
 
 -- The committer owns the git mechanics — commit the dirty tree first,
 -- then fetch and rebase onto origin/develop (a rebase on a dirty tree
--- aborts, so the order is load-bearing), then push (--force-with-lease,
--- safe on a resumed run whose rebase rewrote already-pushed commits) —
--- and finally `gh pr create` plus the pr-check.yml title/body contract
--- checks, repairing a failed contract check with `gh pr edit`. It
--- returns the PR URL as a typed result. The branch `issue-<n>` is
+-- aborts, so the order is load-bearing), then push (`-u
+-- --force-with-lease`: the lease is safe on a resumed run whose rebase
+-- rewrote already-pushed commits, and `-u` repoints the branch's upstream
+-- from the `origin/develop` it inherited from its start point to
+-- `origin/issue-<n>` — load-bearing because the review loop that follows
+-- pushes its fix commits from this same worktree with a bare `git push`,
+-- which against the inherited upstream fails outright or lands on
+-- develop) — and finally `gh pr create` plus the pr-check.yml title/body
+-- contract checks, repairing a failed contract check with `gh pr edit`.
+-- It returns the PR URL as a typed result. The branch `issue-<n>` is
 -- already created and checked out by the worktree step, so the prompt
 -- tells it to stay on that branch rather than create or reuse one.
 local function openPullRequest(brief: Brief, change: string?, workingDir: string): string
@@ -257,7 +262,8 @@ local function openPullRequest(brief: Brief, change: string?, workingDir: string
 		else ("The changes for GitHub issue #%d are implemented."):format(brief.number)
 	local first = table.concat({
 		summary,
-		("Your working directory is the issue's worktree, with the branch `issue-%d` already checked out and the implementation's changes uncommitted. Commit those uncommitted changes (except anything under .ptah) first, with `git commit -S -s` and a Conventional Commits subject ending in `(#%d)` — the sign-off trailer comes from `-s`. Then `git fetch origin` and rebase onto origin/develop so the branch is current against the integration branch (the tree is clean after the commit, so the rebase cannot be blocked by unstaged changes, and it is a no-op when the branch is already based on it). Push the branch to the remote with `git push --force-with-lease origin issue-%d` — the lease makes the push safe when the rebase rewrote commits an earlier attempt already pushed; when the remote branch does not exist yet, `git push -u origin issue-%d` creates it. Then open a pull request against develop with `gh pr create --base develop`. The title must pass the repository's PR contract: read `.github/workflows/pr-check.yml` first and make the title a Conventional Commits `type: subject` or `type(scope): subject` whose type and, when present, scope are on that workflow's validate-pr-title allowlists — an omitted scope always passes; the body must be non-empty and its first line `Closes #%d`. After creating the pull request, confirm the contract checks with `gh pr checks` on it (they report within seconds; retry briefly if it lists none yet) and, when Validate PR Title or Validate PR Body failed, fix the title or body with `gh pr edit` and confirm they pass; do not wait for the slower build checks. Do not create, rename, or switch away from the branch."):format(
+		("Your working directory is the issue's worktree, with the branch `issue-%d` already checked out and the implementation's changes uncommitted. Commit those uncommitted changes (except anything under .ptah) first, with `git commit -S -s` and a Conventional Commits subject ending in `(#%d)` — the sign-off trailer comes from `-s`. Then `git fetch origin` and rebase onto origin/develop so the branch is current against the integration branch (the tree is clean after the commit, so the rebase cannot be blocked by unstaged changes, and it is a no-op when the branch is already based on it). Push the branch to the remote with `git push -u --force-with-lease origin issue-%d`: the lease makes the push safe when the rebase rewrote commits an earlier attempt already pushed, and `-u` both creates the remote branch when it does not exist yet and sets the branch's upstream to `origin/issue-%d` — the branch inherited `origin/develop` as its upstream from its start point, and the review loop that follows pushes fix commits from this same worktree with a bare `git push`, which only lands on `origin/issue-%d` with that upstream set (against `origin/develop` it fails or pushes to develop). Then open a pull request against develop with `gh pr create --base develop`. The title must pass the repository's PR contract: read `.github/workflows/pr-check.yml` first and make the title a Conventional Commits `type: subject` or `type(scope): subject` whose type and, when present, scope are on that workflow's validate-pr-title allowlists — an omitted scope always passes; the body must be non-empty and its first line `Closes #%d`. After creating the pull request, confirm the contract checks with `gh pr checks` on it (they report within seconds; retry briefly if it lists none yet) and, when Validate PR Title or Validate PR Body failed, fix the title or body with `gh pr edit` and confirm they pass; do not wait for the slower build checks. Do not create, rename, or switch away from the branch."):format(
+			brief.number,
 			brief.number,
 			brief.number,
 			brief.number,

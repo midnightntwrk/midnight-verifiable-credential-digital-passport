@@ -18,13 +18,16 @@
 -- provisioning it is the calling shim's business), and with `dryRun = false`
 -- its fix turns commit and push from the sessions' working directory — so
 -- every session runs in a checkout of the PR branch and the invocation
--- directory's own branch never matters. A caller must know: the PR's head
--- must live in this repository's origin (a fork head does not resolve and
--- provision fails loudly), the invocation checkout must not itself be on
--- the PR head branch (git refuses one branch in two worktrees — also a
--- loud failure), and the worktree is torn down after the loop (refuse
--- dirty: an uncommitted fix keeps it, logged; the branch survives
--- teardown).
+-- directory's own branch never matters. A caller must know: the PR must
+-- live in this repository (a fork PR is rejected up front on
+-- `isCrossRepository`, and the head branch name is pinned to the PR's
+-- exact head commit after a fetch — a name colliding with one of this
+-- repository's own branches fails the pin instead of silently
+-- provisioning the worktree on the wrong branch), the invocation
+-- checkout must not itself be on the PR head branch (git refuses one
+-- branch in two worktrees — also a loud failure), and the worktree is
+-- torn down after the loop (refuse dirty: an uncommitted fix keeps it,
+-- logged; the branch survives teardown).
 --
 -- Environment requirements (declared by the playbook, not bundled here):
 -- the `pi` agent must resolve in the ptah registry (.ptah/config.toml or
@@ -87,32 +90,109 @@ end
 local gh = libs.std.gh
 local worktree = libs.std.worktree
 
--- The head branch name, straight from the API, so the worktree is cut from
--- what the PR actually tracks. A fork PR's head lives in another repository,
--- so `origin/<branch>` does not resolve and provision fails loudly — the
--- documented same-repo restriction.
-local function prHeadBranch(prUrl: string): string
-	local outcome = gh.run({ "pr", "view", prUrl, "--json", "headRefName" }, { json = true })
+-- The PR head's identity as GitHub reports it — the branch name and the
+-- exact head commit — plus the cross-repository fact, read in one API
+-- call because provisioning consumes them as one fact: a branch name
+-- alone is not evidence that `origin/<name>` is the PR's head.
+--
+-- A fork PR is rejected here, on `isCrossRepository`, before anything is
+-- provisioned: its head branch lives in another repository, which this
+-- repository's origin can neither fetch nor push, so the loop's fix turns
+-- could never reach the PR. The rejection cannot rest on
+-- `origin/<name>` failing to resolve — when the fork's branch name
+-- collides with a branch of this repository (a fork's `develop` against
+-- this repo's `origin/develop`) the name *does* resolve, to the wrong,
+-- local branch, and the worktree would be provisioned silently on it
+-- with every fix turn pushing agent commits onto that branch (straight
+-- onto `origin/develop`) while the fork PR never updates.
+type PrHead = {
+	branch: string,
+	oid: string,
+}
+
+local function prHead(prUrl: string): PrHead
+	local outcome = gh.run({ "pr", "view", prUrl, "--json", "headRefName,headRefOid,isCrossRepository" }, { json = true })
 	if not outcome.ok then
-		error(("pr-review: could not read the head branch of %s: %s"):format(prUrl, outcome.stderr), 0)
+		error(("pr-review: could not read the head of %s: %s"):format(prUrl, outcome.stderr), 0)
+	end
+	if outcome.json.isCrossRepository == true then
+		error(
+			(
+				"pr-review: %s is a cross-repository (fork) pull request; its head is not in this repository's origin, so fixes cannot be pushed from a same-repository worktree"
+			):format(prUrl),
+			0
+		)
 	end
 	local branch = outcome.json.headRefName
-	if type(branch) ~= "string" or branch == "" then
-		error(("pr-review: %s carried no head branch name"):format(prUrl), 0)
+	local oid = outcome.json.headRefOid
+	if type(branch) ~= "string" or branch == "" or type(oid) ~= "string" or oid == "" then
+		error(("pr-review: %s carried no head branch or head commit"):format(prUrl), 0)
 	end
-	return branch
+	return { branch = branch, oid = oid }
 end
 
--- Provision the worktree the loop's sessions run in: on the PR head branch,
--- fetched, adopting an earlier run's worktree (same path, same branch) so an
--- interrupted review resumes. Fix turns commit and push from here; the
--- invocation directory is never touched.
+-- POSIX sh single-quoting, the stdlib libs' own: a branch name may carry
+-- characters a shell would otherwise reinterpret.
+local function quote(arg: string): string
+	return "'" .. (arg:gsub("'", "'\\''")) .. "'"
+end
+
+-- Two-sided trim, matching the stdlib transports: command output carries
+-- surrounding whitespace that is not part of the value.
+local function trim(s: string): string
+	local trimmed = (s:gsub("^%s+", ""))
+	return (trimmed:gsub("%s+$", ""))
+end
+
+-- Pin the branch name to the head commit before anything is provisioned:
+-- after a plain fetch (provision's own fetch shape),
+-- `refs/remotes/origin/<branch>` must resolve to exactly the commit
+-- GitHub reports as the PR's head. A same-named ref that is missing or
+-- resolves to any other commit — a colliding branch name, a renamed or
+-- deleted head, a local view of some other repository — fails loudly
+-- here instead of provisioning the worktree on a branch the PR does not
+-- track, which is where the fix turns' pushes would silently land. Runs
+-- in the invocation directory, the same repository provision operates
+-- on.
+local function pinOriginHead(prUrl: string, head: PrHead)
+	local fetched = ptah.exec("git fetch origin")
+	if fetched.exitCode ~= 0 then
+		local detail = if fetched.stderr ~= "" then fetched.stderr else fetched.stdout
+		error(("pr-review: git fetch origin failed: %s"):format(detail), 0)
+	end
+	local ref = ("refs/remotes/origin/%s"):format(head.branch)
+	local resolved = ptah.exec(("git rev-parse --verify --quiet %s^{commit}"):format(quote(ref)))
+	if resolved.exitCode ~= 0 then
+		error(
+			(
+				"pr-review: %s tracks branch %s, but %s does not resolve in this repository after fetching origin"
+			):format(prUrl, head.branch, ref),
+			0
+		)
+	end
+	local sha = trim(resolved.stdout)
+	if sha ~= head.oid then
+		error(
+			(
+				"pr-review: %s tracks branch %s at %s, but %s resolves to %s here — the name belongs to a different commit than the PR's head (a colliding branch name, or a head that has moved); refusing to provision on it"
+			):format(prUrl, head.branch, head.oid, ref, sha),
+			0
+		)
+	end
+end
+
+-- Provision the worktree the loop's sessions run in: on the PR head
+-- branch, its name pinned to the head commit first, fetched, adopting an
+-- earlier run's worktree (same path, same branch) so an interrupted
+-- review resumes. Fix turns commit and push from here; the invocation
+-- directory is never touched.
 local function prepareWorktree(prUrl: string): { path: string, branch: string, ref: string }
-	local headBranch = prHeadBranch(prUrl)
+	local head = prHead(prUrl)
+	pinOriginHead(prUrl, head)
 	return worktree.provision({
 		name = ("pr-%s"):format(prNumber(prUrl)),
-		ref = ("origin/%s"):format(headBranch),
-		branch = headBranch,
+		ref = ("origin/%s"):format(head.branch),
+		branch = head.branch,
 		fetch = true,
 	})
 end
